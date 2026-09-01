@@ -1,9 +1,0 @@
-{
-  "name": "thailand-rd-dashboard",
-  "version": "1.0.0",
-  "private": true,
-  "description": "แดชบอร์ดเปรียบเทียบค่าใช้จ่ายและบุคลากรด้าน R&D ของไทยกับกลุ่ม BRICS, Tier สูงกว่า และอาเซียน (ข้อมูล IMD WCY)",
-  "scripts": {
-    "dev": "npx serve ."
-  }
-}
