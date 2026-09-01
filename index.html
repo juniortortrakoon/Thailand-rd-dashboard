@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>R&D Thailand Intelligence Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-badge">R&amp;D</span>
+      <div>
+        <div class="brand-title">Thailand R&amp;D</div>
+        <div class="brand-sub">Intelligence Dashboard</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#overview" class="nav-item active">ภาพรวม</a>
+      <a href="#groups" class="nav-item">กลุ่มเปรียบเทียบ</a>
+      <a href="#explore" class="nav-item">แนวโน้ม &amp; เปรียบเทียบ</a>
+      <a href="#insight" class="nav-item">ข้อสังเกต</a>
+      <a href="#table" class="nav-item">ตารางข้อมูล</a>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="foot-label">ที่มาข้อมูล</div>
+      <div class="foot-value">IMD World Competitiveness<br>Online 1995–2026</div>
+    </div>
+  </aside>
+
+  <div class="main-col">
+
+    <!-- ============ TOPBAR ============ -->
+    <header class="topbar">
+      <button class="burger" id="burgerBtn" aria-label="เมนู">☰</button>
+      <div class="filter-cluster">
+        <span class="flabel">กลุ่มเทียบ</span>
+        <div class="seg" id="groupTabs">
+          <button class="seg-btn active" data-group="BRICS">BRICS</button>
+          <button class="seg-btn" data-group="Tier">Tier สูงกว่า</button>
+          <button class="seg-btn" data-group="ASEAN">อาเซียน</button>
+        </div>
+        <span class="fdivider"></span>
+        <span class="flabel">มุมมอง</span>
+        <div class="seg" id="modeTabs">
+          <button class="seg-btn active" data-mode="value">ค่าจริง</button>
+          <button class="seg-btn" data-mode="rank">อันดับ</button>
+        </div>
+        <span class="fdivider"></span>
+        <span class="flabel">ตัวชี้วัด</span>
+        <select id="indicatorSelect" class="indicator-select"></select>
+      </div>
+    </header>
+
+    <main class="content">
+
+      <!-- ============ HERO / OVERVIEW ============ -->
+      <section id="overview" class="section hero-section">
+        <p class="eyebrow-pill">IMD WORLD COMPETITIVENESS YEARBOOK · 2569</p>
+        <h1>สถานะการลงทุนวิจัยและพัฒนา (R&amp;D) ของไทย</h1>
+        <p class="lede">เทียบศักยภาพค่าใช้จ่ายและบุคลากรด้าน R&amp;D ของไทยกับกลุ่ม BRICS, กลุ่มเศรษฐกิจ Tier ที่สูงกว่า และกลุ่มอาเซียน ในช่วงปี 1995–2024</p>
+
+        <div class="kpi-row" id="kpiRow"><!-- filled by JS --></div>
+      </section>
+
+      <!-- ============ INSIGHT CALLOUT ============ -->
+      <section class="insight-callout" id="insightCallout"><!-- filled by JS --></section>
+
+      <!-- ============ GROUP CARDS ============ -->
+      <section id="groups" class="section">
+        <div class="section-head">
+          <span class="section-num">01</span>
+          <div>
+            <h2>ไทยเทียบกับ 3 กลุ่มประเทศ</h2>
+            <p class="section-sub">ผลต่างค่าใช้จ่าย R&amp;D ต่อ GDP ของไทย เทียบค่าเฉลี่ยแต่ละกลุ่ม (ปีล่าสุดที่มีข้อมูล)</p>
+          </div>
+        </div>
+        <div class="group-cards" id="groupCards"><!-- filled by JS --></div>
+      </section>
+
+      <!-- ============ EXPLORE CHARTS ============ -->
+      <section id="explore" class="section">
+        <div class="section-head">
+          <span class="section-num">02</span>
+          <div>
+            <h2>แนวโน้มและการเปรียบเทียบรายตัวชี้วัด</h2>
+            <p class="section-sub">เลือกกลุ่ม มุมมอง และตัวชี้วัดจากแถบด้านบน เพื่อสำรวจข้อมูลแบบอินเทอร์แอกทีฟ</p>
+          </div>
+        </div>
+        <div class="chart-grid">
+          <div class="chart-card">
+            <div class="chart-card-head">
+              <div>
+                <h3 id="chartTitle">แนวโน้มรายปี</h3>
+                <p class="chart-sub" id="chartUnit"></p>
+              </div>
+            </div>
+            <div class="chart-body" id="trendChart"></div>
+            <div class="legend" id="chartLegend"></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-card-head">
+              <div>
+                <h3>เปรียบเทียบปีล่าสุดที่มีข้อมูล</h3>
+                <p class="chart-sub" id="barUnit"></p>
+              </div>
+            </div>
+            <div class="chart-body chart-body--bar" id="barChart"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ INSIGHT NOTES ============ -->
+      <section id="insight" class="section">
+        <div class="section-head">
+          <span class="section-num">03</span>
+          <div>
+            <h2>ข้อสังเกตเชิงเปรียบเทียบ</h2>
+            <p class="section-sub">สรุปประเด็นสำคัญจากข้อมูลค่าใช้จ่ายและบุคลากร R&amp;D ของไทย</p>
+          </div>
+        </div>
+        <div class="note-grid" id="noteGrid"><!-- filled by JS --></div>
+      </section>
+
+      <!-- ============ TABLE ============ -->
+      <section id="table" class="section">
+        <div class="section-head">
+          <span class="section-num">04</span>
+          <div>
+            <h2>ตารางข้อมูลดิบ</h2>
+            <p class="section-sub">ค่าตามตัวชี้วัด กลุ่ม และมุมมองที่เลือกไว้ด้านบน</p>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-head">
+            <div>
+              <h3>ตารางข้อมูล</h3>
+              <p class="chart-sub">แถวที่ไฮไลต์คือประเทศไทย</p>
+            </div>
+            <button id="toggleTable" class="ghost-btn">แสดงตาราง</button>
+          </div>
+          <div class="table-wrap" id="tableWrap" hidden>
+            <table id="dataTable"></table>
+          </div>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        <p>ที่มาข้อมูล: IMD World Competitiveness Online 1995–2026 · ค่าว่าง (–) หมายถึงไม่มีข้อมูลรายงานในปีนั้น</p>
+      </footer>
+
+    </main>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
