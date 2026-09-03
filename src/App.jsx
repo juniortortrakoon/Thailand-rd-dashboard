@@ -794,6 +794,12 @@ button{font-family:inherit;}
   border:1px solid var(--border);
   border-radius:var(--radius-sm);
 }
+.table-note{
+  margin:10px 2px 0;
+  font-size:12px;
+  color:var(--text-dim);
+  font-style:italic;
+}
 table{border-collapse:collapse; width:100%; font-size:12.5px; font-family:var(--font-mono);}
 table th, table td{padding:8px 12px; text-align:right; border-bottom:1px solid var(--border-soft); white-space:nowrap;}
 table th:first-child, table td:first-child{
@@ -1014,8 +1020,8 @@ export default function App() {
               ["overview", "ภาพรวม"],
               ["groups", "กลุ่มเปรียบเทียบ"],
               ["explore", "แนวโน้ม & เปรียบเทียบ"],
-              ["insight", "ข้อสังเกต"],
-              ["table", "ตารางข้อมูล"]
+              ["table", "ตารางข้อมูล"],
+              ["insight", "ข้อสังเกต"]
             ].map(([id, label]) => (
               <a key={id} href={`#${id}`} className={`nav-item${activeSection === id ? " active" : ""}`} onClick={() => setSidebarOpen(false)}>{label}</a>
             ))}
@@ -1140,27 +1146,9 @@ export default function App() {
               </div>
             </section>
 
-            <section id="insight" className="section">
-              <div className="section-head">
-                <span className="section-num">03</span>
-                <div>
-                  <h2>ข้อสังเกตเชิงเปรียบเทียบ</h2>
-                  <p className="section-sub">สรุปประเด็นสำคัญจากข้อมูลค่าใช้จ่ายและบุคลากร R&amp;D ของไทย</p>
-                </div>
-              </div>
-              <div className="note-grid">
-                {notes.map((n, i) => (
-                  <div className="note-card" style={{ "--accent": n.accent }} key={i}>
-                    <h4>{n.title}</h4>
-                    <p>{n.body}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
             <section id="table" className="section">
               <div className="section-head">
-                <span className="section-num">04</span>
+                <span className="section-num">03</span>
                 <div>
                   <h2>ตารางข้อมูลดิบ</h2>
                   <p className="section-sub">ค่าตามตัวชี้วัดที่เลือกในส่วนที่ 02 และกลุ่ม/มุมมองที่เลือกไว้ด้านบน</p>
@@ -1175,34 +1163,55 @@ export default function App() {
                   <button className="ghost-btn" onClick={() => setTableOpen(o => !o)}>{tableOpen ? "ซ่อนตาราง" : "แสดงตาราง"}</button>
                 </div>
                 {tableOpen && (
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>ประเทศ</th>
-                          {tableYears.map(y => <th key={y}>{y}</th>)}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {countries.map(c => {
-                          const rec = getIndicatorRecord(group, mode, c, indicator);
-                          const dec = mode === "rank" ? 0 : unitDecimals(rec ? rec.unit : "");
-                          return (
-                            <tr key={c} className={c === "Thailand" ? "row-thailand" : ""}>
-                              <td>{c}</td>
-                              {tableYears.map(y => <td key={y}>{rec && rec.data[y] !== undefined ? fmtNumber(rec.data[y], dec) : "–"}</td>)}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                  <>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>ประเทศ</th>
+                            {tableYears.map(y => <th key={y}>{y}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {countries.map(c => {
+                            const rec = getIndicatorRecord(group, mode, c, indicator);
+                            const dec = mode === "rank" ? 0 : unitDecimals(rec ? rec.unit : "");
+                            return (
+                              <tr key={c} className={c === "Thailand" ? "row-thailand" : ""}>
+                                <td>{c}</td>
+                                {tableYears.map(y => <td key={y}>{rec && rec.data[y] !== undefined ? fmtNumber(rec.data[y], dec) : "–"}</td>)}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="table-note">ค่าว่าง (–) หมายถึงไม่มีข้อมูลรายงานในปีนั้น</p>
+                  </>
                 )}
               </div>
             </section>
 
+            <section id="insight" className="section">
+              <div className="section-head">
+                <span className="section-num">04</span>
+                <div>
+                  <h2>ข้อสังเกตเชิงเปรียบเทียบ</h2>
+                  <p className="section-sub">สรุปประเด็นสำคัญจากข้อมูลค่าใช้จ่ายและบุคลากร R&amp;D ของไทย (ไม่เปลี่ยนตามตัวชี้วัดที่เลือกด้านบน)</p>
+                </div>
+              </div>
+              <div className="note-grid">
+                {notes.map((n, i) => (
+                  <div className="note-card" style={{ "--accent": n.accent }} key={i}>
+                    <h4>{n.title}</h4>
+                    <p>{n.body}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
             <footer className="page-footer">
-              <p>ที่มาข้อมูล: IMD World Competitiveness Online 1995–2026 · ค่าว่าง (–) หมายถึงไม่มีข้อมูลรายงานในปีนั้น</p>
+              <p>ที่มาข้อมูล: IMD World Competitiveness Online 1995–2026</p>
             </footer>
           </main>
         </div>
