@@ -497,6 +497,23 @@ button{font-family:inherit;}
   min-width:220px;
   cursor:pointer;
 }
+.indicator-filter-bar{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  background:linear-gradient(135deg, rgba(14,165,160,.07), rgba(232,163,61,.08));
+  border:1px solid var(--border);
+  border-left:3px solid var(--teal);
+  border-radius:10px;
+  padding:10px 16px;
+  margin-bottom:16px;
+}
+.indicator-filter-hint{
+  font-size:12px;
+  color:var(--text-dim);
+  font-style:italic;
+}
 
 /* ============ CONTENT ============ */
 .content{
@@ -824,6 +841,7 @@ table tbody tr.row-thailand td:first-child{background:#FBEFDA;}
   .content{padding:20px 16px 40px;}
   .filter-cluster{gap:8px; padding:8px 10px;}
   .indicator-select{min-width:0; flex:1 1 100%;}
+  .indicator-filter-hint{display:none;}
 }
 
 button:focus-visible, select:focus-visible, a:focus-visible{
@@ -1024,11 +1042,6 @@ export default function App() {
                 <button className={`seg-btn${mode === "value" ? " active" : ""}`} onClick={() => setMode("value")}>ค่าจริง</button>
                 <button className={`seg-btn${mode === "rank" ? " active" : ""}`} onClick={() => setMode("rank")}>อันดับ</button>
               </div>
-              <span className="fdivider" />
-              <span className="flabel">ตัวชี้วัด</span>
-              <select className="indicator-select" value={indicator} onChange={e => setIndicator(e.target.value)}>
-                {INDICATOR_ORDER.map(ind => <option key={ind} value={ind}>{INDICATOR_LABELS[ind]}</option>)}
-              </select>
             </div>
           </header>
 
@@ -1090,8 +1103,15 @@ export default function App() {
                 <span className="section-num">02</span>
                 <div>
                   <h2>แนวโน้มและการเปรียบเทียบรายตัวชี้วัด</h2>
-                  <p className="section-sub">เลือกกลุ่ม มุมมอง และตัวชี้วัดจากแถบด้านบน เพื่อสำรวจข้อมูลแบบอินเทอร์แอกทีฟ</p>
+                  <p className="section-sub">เลือกกลุ่มและมุมมองจากแถบด้านบน แล้วเลือกตัวชี้วัดด้านล่างเพื่อสำรวจข้อมูล — กราฟและตารางจะอัปเดตตามตัวชี้วัดที่เลือก</p>
                 </div>
+              </div>
+              <div className="indicator-filter-bar">
+                <span className="flabel">ตัวชี้วัด</span>
+                <select className="indicator-select" value={indicator} onChange={e => setIndicator(e.target.value)}>
+                  {INDICATOR_ORDER.map(ind => <option key={ind} value={ind}>{INDICATOR_LABELS[ind]}</option>)}
+                </select>
+                <span className="indicator-filter-hint">↓ กราฟและตารางด้านล่างจะเปลี่ยนตามตัวชี้วัดนี้</span>
               </div>
               <div className="chart-grid">
                 <div className="chart-card">
@@ -1143,7 +1163,7 @@ export default function App() {
                 <span className="section-num">04</span>
                 <div>
                   <h2>ตารางข้อมูลดิบ</h2>
-                  <p className="section-sub">ค่าตามตัวชี้วัด กลุ่ม และมุมมองที่เลือกไว้ด้านบน</p>
+                  <p className="section-sub">ค่าตามตัวชี้วัดที่เลือกในส่วนที่ 02 และกลุ่ม/มุมมองที่เลือกไว้ด้านบน</p>
                 </div>
               </div>
               <div className="chart-card">
