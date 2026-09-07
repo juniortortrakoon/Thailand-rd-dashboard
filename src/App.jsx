@@ -22,6 +22,33 @@ function svgEl(tag, attrs) {
   return el;
 }
 
+// One tooltip DOM node per chart container, appended to <body> so it can
+// float outside a card's `overflow:hidden` instead of getting clipped.
+// Reused across redraws (resize, data change) via a WeakMap keyed by container.
+const CHART_TOOLTIP_POOL = new WeakMap();
+function getPortalTooltip(container) {
+  let el = CHART_TOOLTIP_POOL.get(container);
+  if (!el || !el.isConnected) {
+    el = document.createElement("div");
+    el.className = "svg-tooltip svg-tooltip-portal";
+    el.style.display = "none";
+    document.body.appendChild(el);
+    CHART_TOOLTIP_POOL.set(container, el);
+  }
+  return el;
+}
+function positionPortalTooltip(tooltip, clientX, clientY) {
+  tooltip.style.display = "block";
+  const tw = tooltip.offsetWidth || 220;
+  const th = tooltip.offsetHeight || 70;
+  let left = clientX + 16;
+  if (left + tw > window.innerWidth - 8) left = Math.max(8, clientX - tw - 16);
+  let top = clientY - th / 2;
+  top = Math.max(8, Math.min(top, window.innerHeight - th - 8));
+  tooltip.style.left = left + "px";
+  tooltip.style.top = top + "px";
+}
+
 function niceTicks(min, max, count) {
   if (min === max) { min -= 1; max += 1; }
   const span = max - min;
@@ -70,7 +97,6 @@ function drawLineChart(container, opts) {
   let min = Math.min(...allVals), max = Math.max(...allVals);
   const ticks = niceTicks(min, max, 5);
   min = ticks[0]; max = ticks[ticks.length - 1];
-
   const n = years.length;
   const xFor = i => padL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
   const yFor = v => {
@@ -180,31 +206,214 @@ function drawLineChart(container, opts) {
   });
 
   container.appendChild(wrap);
+  return { min, max, ticks };
+}
+
+/* ---------- Dual-axis line chart (two independently scaled series) ---------- */
+// opts: { years, seriesLeft: {label, values, color}, seriesRight: {label, values, color}, formatLeft, formatRight, forecastFromIndex }
+function drawDualAxisLineChart(container, opts) {
+  const { years, seriesLeft, seriesRight, formatLeft, formatRight, forecastFromIndex, pointColors } = opts;
+  container.innerHTML = "";
+
+  const rect = container.getBoundingClientRect();
+  const width = Math.max(280, Math.round(rect.width) || 900);
+  const height = container.clientHeight || 380;
+  const isNarrow = width < 520;
+
+  function scaleFor(values) {
+    const nums = values.filter(v => v !== null && v !== undefined);
+    if (nums.length === 0) return { min: 0, max: 1, ticks: [0, 1] };
+    let min = Math.min(...nums), max = Math.max(...nums);
+    const ticks = niceTicks(min, max, 4);
+    return { min: ticks[0], max: ticks[ticks.length - 1], ticks };
+  }
+  const L = scaleFor(seriesLeft.values);
+  const R = scaleFor(seriesRight.values);
+
+  // Size each side's padding to fit its own tick labels — a fixed pad
+  // clips long formatted numbers (e.g. thousands separators, units) past the edge.
+  const leftLabelLen = Math.max(...L.ticks.map(t => String(formatLeft ? formatLeft(t) : fmtTick(t)).length), 2);
+  const rightLabelLen = Math.max(...R.ticks.map(t => String(formatRight ? formatRight(t) : fmtTick(t)).length), 2);
+  const charW = isNarrow ? 6 : 7;
+  const padL = Math.min(isNarrow ? 90 : 110, Math.max(isNarrow ? 40 : 54, leftLabelLen * charW + 18));
+  const padR = Math.min(isNarrow ? 90 : 110, Math.max(isNarrow ? 40 : 54, rightLabelLen * charW + 18));
+  const padT = 22, padB = 30;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const n = years.length;
+
+  const xFor = i => padL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const yForL = v => padT + (1 - (v - L.min) / (L.max - L.min)) * plotH;
+  const yForR = v => padT + (1 - (v - R.min) / (R.max - R.min)) * plotH;
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width: "100%", height: "100%", role: "img" });
+
+  // horizontal gridlines follow the LEFT axis scale
+  L.ticks.forEach(t => {
+    const y = yForL(t);
+    svg.appendChild(svgEl("line", { x1: padL, x2: width - padR, y1: y, y2: y, stroke: "#e4e8de", "stroke-width": 1 }));
+    const lab = svgEl("text", { x: padL - 8, y: y + 4, "text-anchor": "end", "font-size": isNarrow ? 9 : 10.5, "font-family": "IBM Plex Mono, monospace", fill: seriesLeft.color });
+    lab.textContent = formatLeft ? formatLeft(t) : fmtTick(t);
+    svg.appendChild(lab);
+  });
+  R.ticks.forEach(t => {
+    const y = yForR(t);
+    const lab = svgEl("text", { x: width - padR + 8, y: y + 4, "text-anchor": "start", "font-size": isNarrow ? 9 : 10.5, "font-family": "IBM Plex Mono, monospace", fill: seriesRight.color });
+    lab.textContent = formatRight ? formatRight(t) : fmtTick(t);
+    svg.appendChild(lab);
+  });
+
+  // axis titles
+  const titleL = svgEl("text", { x: 4, y: 14, "font-size": isNarrow ? 9 : 10.5, "font-family": "IBM Plex Sans Thai, sans-serif", fill: seriesLeft.color, "font-weight": 600 });
+  titleL.textContent = seriesLeft.label;
+  svg.appendChild(titleL);
+  const titleR = svgEl("text", { x: width - 4, y: 14, "text-anchor": "end", "font-size": isNarrow ? 9 : 10.5, "font-family": "IBM Plex Sans Thai, sans-serif", fill: seriesRight.color, "font-weight": 600 });
+  titleR.textContent = seriesRight.label;
+  svg.appendChild(titleR);
+
+  // x labels
+  const minLabelGap = isNarrow ? 40 : 56;
+  const maxLabels = Math.max(3, Math.floor(plotW / minLabelGap));
+  const step = Math.max(1, Math.ceil(n / maxLabels));
+  years.forEach((yr, i) => {
+    if (i % step !== 0 && i !== n - 1) return;
+    const x = xFor(i);
+    const label = svgEl("text", { x, y: height - padB + 18, "text-anchor": "middle", "font-size": isNarrow ? 8.5 : 10, "font-family": "IBM Plex Mono, monospace", fill: "#6b7d86" });
+    label.textContent = yr;
+    svg.appendChild(label);
+  });
+
+  // forecast divider
+  if (forecastFromIndex !== undefined && forecastFromIndex > 0 && forecastFromIndex < n) {
+    const x = xFor(forecastFromIndex);
+    svg.appendChild(svgEl("line", { x1: x, x2: x, y1: padT, y2: padT + plotH, stroke: "#c7cdb9", "stroke-width": 1, "stroke-dasharray": "3,3" }));
+  }
+
+  function drawSeries(series, yFor) {
+    const solidPts = [], dashedPts = [];
+    series.values.forEach((v, i) => {
+      if (v === null || v === undefined) return;
+      const p = [xFor(i), yFor(v)];
+      if (forecastFromIndex !== undefined && i >= forecastFromIndex) dashedPts.push(p);
+      else solidPts.push(p);
+    });
+    if (dashedPts.length && solidPts.length) dashedPts.unshift(solidPts[solidPts.length - 1]);
+    if (solidPts.length) {
+      const d = solidPts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" ");
+      svg.appendChild(svgEl("path", { d, fill: "none", stroke: series.color, "stroke-width": 2.6, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    }
+    if (dashedPts.length > 1) {
+      const d = dashedPts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" ");
+      svg.appendChild(svgEl("path", { d, fill: "none", stroke: series.color, "stroke-width": 2.6, "stroke-dasharray": "6,4", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    }
+    series.values.forEach((v, i) => {
+      if (v === null || v === undefined) return;
+      const isForecast = forecastFromIndex !== undefined && i >= forecastFromIndex;
+      const dotColor = (pointColors && pointColors[i]) || series.color;
+      const cx = xFor(i), cy = yFor(v);
+      if (isForecast) {
+        const s = 6;
+        svg.appendChild(svgEl("line", { x1: cx - s, y1: cy - s, x2: cx + s, y2: cy + s, stroke: dotColor, "stroke-width": 3, "stroke-linecap": "round" }));
+        svg.appendChild(svgEl("line", { x1: cx - s, y1: cy + s, x2: cx + s, y2: cy - s, stroke: dotColor, "stroke-width": 3, "stroke-linecap": "round" }));
+      } else {
+        svg.appendChild(svgEl("circle", { cx, cy, r: 6, fill: dotColor, stroke: "#fff", "stroke-width": 1.5 }));
+      }
+    });
+  }
+  drawSeries(seriesLeft, yForL);
+  drawSeries(seriesRight, yForR);
+
+  // hover interaction
+  const hoverLine = svgEl("line", { x1: 0, x2: 0, y1: padT, y2: padT + plotH, stroke: "#0f2436", "stroke-width": 1, opacity: 0 });
+  svg.appendChild(hoverLine);
+
+  const wrap = document.createElement("div");
+  wrap.className = "svg-chart-wrap";
+  wrap.appendChild(svg);
+
+  const tooltip = document.createElement("div");
+  tooltip.className = "svg-tooltip";
+  tooltip.style.display = "none";
+  wrap.appendChild(tooltip);
+
+  svg.addEventListener("mousemove", e => {
+    const r2 = svg.getBoundingClientRect();
+    const relX = ((e.clientX - r2.left) / r2.width) * width;
+    let idx = Math.round(((relX - padL) / plotW) * (n - 1));
+    idx = Math.max(0, Math.min(n - 1, idx));
+    const x = xFor(idx);
+    hoverLine.setAttribute("x1", x); hoverLine.setAttribute("x2", x); hoverLine.setAttribute("opacity", 1);
+
+    const vL = seriesLeft.values[idx], vR = seriesRight.values[idx];
+    const rows = [
+      `<div class="tt-row"><span class="tt-swatch" style="background:${seriesLeft.color}"></span>${seriesLeft.label}: <b>${vL === null || vL === undefined ? "–" : (formatLeft ? formatLeft(vL) : vL)}</b></div>`,
+      `<div class="tt-row"><span class="tt-swatch" style="background:${seriesRight.color}"></span>${seriesRight.label}: <b>${vR === null || vR === undefined ? "–" : (formatRight ? formatRight(vR) : vR)}</b></div>`
+    ].join("");
+    tooltip.innerHTML = `<div class="tt-year">${years[idx]}</div>${rows}`;
+    tooltip.style.display = "block";
+    const leftPct = (x / width) * 100;
+    tooltip.style.left = leftPct > 60 ? "auto" : `calc(${leftPct}% + 10px)`;
+    tooltip.style.right = leftPct > 60 ? `calc(${100 - leftPct}% + 10px)` : "auto";
+    tooltip.style.top = "8px";
+  });
+  svg.addEventListener("mouseleave", () => { hoverLine.setAttribute("opacity", 0); tooltip.style.display = "none"; });
+
+  container.appendChild(wrap);
 }
 
 /* ---------- Bar chart (horizontal) ---------- */
 // opts: { labels: [...], values: [...], colors: [...], reverseX, formatValue }
 function drawBarChart(container, opts) {
-  const { labels, values, colors, reverseX = false, formatValue } = opts;
+  const { labels, values, colors, reverseX = false, formatValue, domain, tooltipHtml, xAxisLabel, yAxisLabel } = opts;
   container.innerHTML = "";
 
-  const rowH = 40;
   const rect = container.getBoundingClientRect();
   const width = Math.max(280, Math.round(rect.width) || 900);
-  const height = Math.max(container.clientHeight || 300, labels.length * rowH + 20);
+  const availH = container.clientHeight || 300;
   const longest = Math.max(...labels.map(l => l.length), 4);
   const isNarrow = width < 520;
-  const padL = Math.min(isNarrow ? 130 : 220, Math.max(isNarrow ? 70 : 90, longest * (isNarrow ? 6 : 7.5))), padR = 56, padT = 10, padB = 10;
+  // Reserve enough right-hand space for the formatted value labels (e.g.
+  // "1,227.85 ล้านบาท") — a fixed pad clips long text past the panel edge.
+  const valueLabelStrings = values.map(v => (v === null || v === undefined) ? "" : String(formatValue ? formatValue(v) : v));
+  const longestValue = Math.max(...valueLabelStrings.map(s => s.length), 3);
+  const yTitleW = yAxisLabel ? 20 : 0;
+  const padL = yTitleW + Math.min(isNarrow ? 130 : 220, Math.max(isNarrow ? 70 : 90, longest * (isNarrow ? 6 : 7.5)));
+  const padR = Math.min(isNarrow ? 110 : 170, Math.max(56, longestValue * (isNarrow ? 6 : 7) + 16));
+  const padT = 10, padB = 10 + (domain ? 24 : 0) + (xAxisLabel ? 20 : 0);
   const plotW = width - padL - padR;
+
+  // Fill the available panel height evenly: row height grows/shrinks with
+  // the container instead of leaving empty space below a short bar list.
+  const minRowH = 30, maxRowH = 64;
+  let rowH = Math.floor((availH - padT - padB) / Math.max(1, labels.length));
+  rowH = Math.max(minRowH, Math.min(maxRowH, rowH));
+  const naturalH = padT + labels.length * rowH + padB;
+  const height = Math.max(availH, naturalH);
+  const topOffset = Math.max(0, (height - naturalH) / 2);
+  const padTAdj = padT + topOffset;
 
   const nums = values.filter(v => v !== null && v !== undefined);
   if (nums.length === 0) {
     container.innerHTML = '<div class="empty-note">ไม่มีข้อมูลสำหรับตัวเลือกนี้</div>';
     return;
   }
-  let min = Math.min(0, ...nums), max = Math.max(...nums);
-  if (reverseX) { const t = min; min = 0; max = Math.max(max, 1); }
+  // Share the value axis with the paired line chart when a domain is supplied,
+  // so a given value spans the same proportional length/height in both charts.
+  let min, max, ticks;
+  if (domain) {
+    min = Math.min(0, domain.min);
+    max = Math.max(domain.max, ...nums);
+    ticks = domain.ticks;
+  } else {
+    min = Math.min(0, ...nums);
+    max = Math.max(...nums);
+    if (reverseX) max = Math.max(max, 1);
+  }
   if (min === max) max = min + 1;
+
+  const rowsTop = padTAdj;
+  const rowsBottom = padTAdj + labels.length * rowH;
+  const axisY = domain ? rowsBottom + 20 : rowsBottom + Math.min(padB, 22);
 
   const xFor = v => padL + ((v - min) / (max - min)) * plotW;
   const zeroX = xFor(0);
@@ -215,24 +424,46 @@ function drawBarChart(container, opts) {
     height: "100%"
   });
 
-  svg.appendChild(svgEl("line", { x1: zeroX, x2: zeroX, y1: padT, y2: height - padB, stroke: "#c7cdb9", "stroke-width": 1 }));
+  svg.appendChild(svgEl("line", { x1: zeroX, x2: zeroX, y1: rowsTop, y2: rowsBottom, stroke: "#c7cdb9", "stroke-width": 1 }));
+
+  if (domain && ticks && ticks.length) {
+    ticks.forEach(t => {
+      const x = xFor(t);
+      if (x < padL - 0.5 || x > width - padR + 0.5) return;
+      svg.appendChild(svgEl("line", { x1: x, x2: x, y1: rowsTop, y2: rowsBottom, stroke: "#e4e8de", "stroke-width": 1 }));
+      const tickLabel = svgEl("text", { x, y: axisY, "text-anchor": "middle", "font-size": isNarrow ? 9 : 11, "font-family": "IBM Plex Mono, monospace", fill: "#6b7d86" });
+      tickLabel.textContent = fmtTick(t);
+      svg.appendChild(tickLabel);
+    });
+  }
 
   labels.forEach((label, i) => {
-    const y = padT + i * rowH;
+    const y = rowsTop + i * rowH;
     const v = values[i];
 
-    const labelEl = svgEl("text", { x: padL - 10, y: y + rowH / 2 + 4, "text-anchor": "end", "font-size": isNarrow ? 11 : 13, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#16324a" });
-    labelEl.textContent = label;
+    const labelFontSize = isNarrow ? 11 : 13;
+    const charW = labelFontSize * 0.56;
+    const availLabelW = padL - yTitleW - 10;
+    const maxChars = Math.max(3, Math.floor(availLabelW / charW));
+    const displayLabel = label.length > maxChars ? label.slice(0, maxChars - 1) + "…" : label;
+
+    const labelEl = svgEl("text", { x: padL - 10, y: y + rowH / 2 + 4, "text-anchor": "end", "font-size": labelFontSize, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#16324a" });
+    labelEl.textContent = displayLabel;
+    if (displayLabel !== label) {
+      const titleEl = svgEl("title", {});
+      titleEl.textContent = label;
+      labelEl.appendChild(titleEl);
+    }
     svg.appendChild(labelEl);
 
     if (v === null || v === undefined) return;
 
-    const barH = 20;
+    const barH = Math.min(20, rowH * 0.38);
     const x0 = Math.min(zeroX, xFor(v));
     const x1 = Math.max(zeroX, xFor(v));
     const rect = svgEl("rect", {
       x: x0, y: y + (rowH - barH) / 2, width: Math.max(1, x1 - x0), height: barH,
-      rx: 3, fill: colors[i] || "#999"
+      rx: 2, fill: colors[i] || "#999"
     });
     svg.appendChild(rect);
 
@@ -242,14 +473,461 @@ function drawBarChart(container, opts) {
     });
     valLabel.textContent = formatValue ? formatValue(v) : v;
     svg.appendChild(valLabel);
+
+    if (tooltipHtml) {
+      const rowBg = svgEl("rect", { x: 0, y, width, height: rowH, fill: "#16324a", opacity: 0, style: "transition:opacity .12s ease; pointer-events:none;" });
+      svg.insertBefore(rowBg, svg.firstChild);
+      const hitArea = svgEl("rect", {
+        x: 0, y, width, height: rowH,
+        fill: "transparent", style: "cursor:pointer;"
+      });
+      hitArea.addEventListener("mouseenter", () => { rect.setAttribute("opacity", "0.8"); rowBg.setAttribute("opacity", "0.05"); });
+      hitArea.addEventListener("mousemove", e => showTooltip(i, e.clientX, e.clientY));
+      hitArea.addEventListener("mouseleave", () => { rect.setAttribute("opacity", "1"); rowBg.setAttribute("opacity", "0"); hideTooltip(); });
+      svg.appendChild(hitArea);
+    }
+  });
+
+  if (xAxisLabel) {
+    const xLabel = svgEl("text", {
+      x: padL + plotW / 2, y: height - 6, "text-anchor": "middle",
+      "font-size": isNarrow ? 10 : 11.5, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#6b7d86"
+    });
+    xLabel.textContent = xAxisLabel;
+    svg.appendChild(xLabel);
+  }
+  if (yAxisLabel) {
+    const yMid = rowsTop + (rowsBottom - rowsTop) / 2;
+    const yLabel = svgEl("text", {
+      x: 14, y: yMid, "text-anchor": "middle",
+      "font-size": isNarrow ? 10 : 11.5, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#6b7d86",
+      transform: `rotate(-90 14 ${yMid})`
+    });
+    yLabel.textContent = yAxisLabel;
+    svg.appendChild(yLabel);
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "svg-chart-wrap";
+  wrap.style.height = height + "px";
+  wrap.style.position = "relative";
+  wrap.appendChild(svg);
+
+  const tooltip = tooltipHtml ? getPortalTooltip(container) : null;
+  function showTooltip(i, clientX, clientY) {
+    if (!tooltip) return;
+    tooltip.innerHTML = tooltipHtml(i);
+    positionPortalTooltip(tooltip, clientX, clientY);
+  }
+  function hideTooltip() { if (tooltip) tooltip.style.display = "none"; }
+
+  container.appendChild(wrap);
+}
+
+/* ---------- Stacked horizontal bar (2 series, e.g. male/female) ---------- */
+/* ---------- Grouped vertical column chart (2 series, dual axis) ---------- */
+// opts: { categories, seriesLeft:{name,color,values}, seriesRight:{name,color,values}, formatLeft, formatRight, tooltipHtml }
+/* ---------- Combo chart: bars (left axis) + line (right axis), with data labels ---------- */
+// opts: { categories, bars:{name,color,values}, line:{name,color,values}, formatBars, formatLine }
+function drawComboChart(container, opts) {
+  const { categories, bars, line, formatBars, formatLine } = opts;
+  container.innerHTML = "";
+
+  const rect = container.getBoundingClientRect();
+  const width = Math.max(280, Math.round(rect.width) || 900);
+  const height = container.clientHeight || 380;
+  const isNarrow = width < 520;
+  const n = categories.length;
+
+  const padL = isNarrow ? 20 : 28, padR = isNarrow ? 20 : 28, padT = 40, padB = 60;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+
+  const barMax = Math.max(...bars.values, 1) * 1.35;
+  const lineMax = Math.max(...line.values, 1) * 1.3;
+  const slotW = plotW / n;
+  const barW = Math.min(90, slotW * 0.4);
+
+  const xForCenter = i => padL + slotW * (i + 0.5);
+  const yForBar = v => padT + plotH - (v / barMax) * plotH;
+  const yForLine = v => padT + plotH - (v / lineMax) * plotH;
+  const baseY = padT + plotH;
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width: "100%", height: "100%" });
+  svg.appendChild(svgEl("line", { x1: padL, x2: width - padR, y1: baseY, y2: baseY, stroke: "#c7cdb9", "stroke-width": 1 }));
+
+  // legend at top
+  const legendItems = [{ label: bars.name, color: bars.color, shape: "bar" }, { label: line.name, color: line.color, shape: "line" }];
+  let lx = padL;
+  legendItems.forEach(item => {
+    if (item.shape === "bar") {
+      svg.appendChild(svgEl("rect", { x: lx, y: 6, width: 12, height: 12, rx: 2, fill: item.color }));
+    } else {
+      svg.appendChild(svgEl("line", { x1: lx, x2: lx + 12, y1: 12, y2: 12, stroke: item.color, "stroke-width": 3 }));
+      svg.appendChild(svgEl("circle", { cx: lx + 6, cy: 12, r: 3, fill: item.color }));
+    }
+    const t = svgEl("text", { x: lx + 17, y: 16, "font-size": isNarrow ? 10 : 11.5, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#16324a", "font-weight": 600 });
+    t.textContent = item.label;
+    svg.appendChild(t);
+    lx += 20 + item.label.length * (isNarrow ? 6.4 : 7.2) + 26;
+  });
+
+  // bars + bar data labels
+  categories.forEach((cat, i) => {
+    const cx = xForCenter(i);
+    const v = bars.values[i];
+    const y = yForBar(v);
+    svg.appendChild(svgEl("rect", { x: cx - barW / 2, y, width: barW, height: baseY - y, rx: 4, fill: bars.color }));
+    const lbl = svgEl("text", { x: cx, y: y - 10, "text-anchor": "middle", "font-size": isNarrow ? 12 : 14, "font-family": "IBM Plex Mono, monospace", "font-weight": 700, fill: bars.color });
+    lbl.textContent = formatBars ? formatBars(v) : v;
+    svg.appendChild(lbl);
+
+    const catLabel = svgEl("text", { x: cx, y: baseY + 22, "text-anchor": "middle", "font-size": isNarrow ? 11 : 13, "font-family": "IBM Plex Mono, monospace", fill: "#16324a", "font-weight": 700 });
+    catLabel.textContent = cat;
+    svg.appendChild(catLabel);
+  });
+
+  // line + line data labels
+  const linePts = categories.map((_, i) => [xForCenter(i), yForLine(line.values[i])]);
+  const d = linePts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" ");
+  svg.appendChild(svgEl("path", { d, fill: "none", stroke: line.color, "stroke-width": 3, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  linePts.forEach(([px, py], i) => {
+    svg.appendChild(svgEl("circle", { cx: px, cy: py, r: 5, fill: "#fff", stroke: line.color, "stroke-width": 3 }));
+    const above = py - 14 > padT;
+    const lbl = svgEl("text", { x: px, y: above ? py - 14 : py + 22, "text-anchor": "middle", "font-size": isNarrow ? 12 : 14, "font-family": "IBM Plex Mono, monospace", "font-weight": 700, fill: line.color });
+    lbl.textContent = formatLine ? formatLine(line.values[i]) : line.values[i];
+    svg.appendChild(lbl);
   });
 
   const wrap = document.createElement("div");
   wrap.className = "svg-chart-wrap";
-  wrap.style.minHeight = height + "px";
+  wrap.style.height = height + "px";
   wrap.appendChild(svg);
   container.appendChild(wrap);
 }
+
+function drawGroupedColumnChart(container, opts) {
+  const { categories, seriesLeft, seriesRight, formatLeft, formatRight, tooltipHtml } = opts;
+  container.innerHTML = "";
+
+  const rect = container.getBoundingClientRect();
+  const width = Math.max(280, Math.round(rect.width) || 900);
+  const height = container.clientHeight || 380;
+  const isNarrow = width < 520;
+
+  function scaleFor(values) {
+    const nums = values.filter(v => v !== null && v !== undefined);
+    if (nums.length === 0) return { min: 0, max: 1, ticks: [0, 1] };
+    const ticks = niceTicks(0, Math.max(...nums), 4);
+    return { min: 0, max: ticks[ticks.length - 1], ticks };
+  }
+  const L = scaleFor(seriesLeft.values);
+  const R = scaleFor(seriesRight.values);
+  const leftLabelLen = Math.max(...L.ticks.map(t => String(formatLeft ? formatLeft(t) : fmtTick(t)).length), 2);
+  const rightLabelLen = Math.max(...R.ticks.map(t => String(formatRight ? formatRight(t) : fmtTick(t)).length), 2);
+  const charW = isNarrow ? 6 : 7;
+  const padL = Math.min(isNarrow ? 90 : 110, Math.max(isNarrow ? 40 : 54, leftLabelLen * charW + 18));
+  const padR = Math.min(isNarrow ? 90 : 110, Math.max(isNarrow ? 40 : 54, rightLabelLen * charW + 18));
+  const padT = 30, padB = 44;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const n = categories.length;
+
+  const slotW = plotW / n;
+  const barW = Math.min(46, slotW * 0.32);
+  const gap = Math.min(6, slotW * 0.06);
+
+  const yForL = v => padT + plotH - (v / L.max) * plotH;
+  const yForR = v => padT + plotH - (v / R.max) * plotH;
+  const xForSlotCenter = i => padL + slotW * (i + 0.5);
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width: "100%", height: "100%" });
+
+  L.ticks.forEach(t => {
+    const y = yForL(t);
+    svg.appendChild(svgEl("line", { x1: padL, x2: width - padR, y1: y, y2: y, stroke: "#e4e8de", "stroke-width": 1 }));
+    const lab = svgEl("text", { x: padL - 8, y: y + 4, "text-anchor": "end", "font-size": isNarrow ? 9 : 10.5, "font-family": "IBM Plex Mono, monospace", fill: seriesLeft.color });
+    lab.textContent = formatLeft ? formatLeft(t) : fmtTick(t);
+    svg.appendChild(lab);
+  });
+  R.ticks.forEach(t => {
+    const y = yForR(t);
+    const lab = svgEl("text", { x: width - padR + 8, y: y + 4, "text-anchor": "start", "font-size": isNarrow ? 9 : 10.5, "font-family": "IBM Plex Mono, monospace", fill: seriesRight.color });
+    lab.textContent = formatRight ? formatRight(t) : fmtTick(t);
+    svg.appendChild(lab);
+  });
+
+  const titleL = svgEl("text", { x: 4, y: 14, "font-size": isNarrow ? 9 : 10.5, "font-family": "IBM Plex Sans Thai, sans-serif", fill: seriesLeft.color, "font-weight": 600 });
+  titleL.textContent = seriesLeft.name;
+  svg.appendChild(titleL);
+  const titleR = svgEl("text", { x: width - 4, y: 14, "text-anchor": "end", "font-size": isNarrow ? 9 : 10.5, "font-family": "IBM Plex Sans Thai, sans-serif", fill: seriesRight.color, "font-weight": 600 });
+  titleR.textContent = seriesRight.name;
+  svg.appendChild(titleR);
+
+  svg.appendChild(svgEl("line", { x1: padL, x2: width - padR, y1: padT + plotH, y2: padT + plotH, stroke: "#c7cdb9", "stroke-width": 1 }));
+
+  categories.forEach((cat, i) => {
+    const cx = xForSlotCenter(i);
+    const lv = seriesLeft.values[i], rv = seriesRight.values[i];
+    const baseY = padT + plotH;
+
+    const lx = cx - gap / 2 - barW;
+    if (lv !== null && lv !== undefined) {
+      const y = yForL(lv);
+      svg.appendChild(svgEl("rect", { x: lx, y, width: barW, height: baseY - y, rx: 3, fill: seriesLeft.color }));
+    }
+    const rx = cx + gap / 2;
+    if (rv !== null && rv !== undefined) {
+      const y = yForR(rv);
+      svg.appendChild(svgEl("rect", { x: rx, y, width: barW, height: baseY - y, rx: 3, fill: seriesRight.color }));
+    }
+
+    const catLabel = svgEl("text", { x: cx, y: baseY + 18, "text-anchor": "middle", "font-size": isNarrow ? 10 : 12, "font-family": "IBM Plex Mono, monospace", fill: "#16324a", "font-weight": 600 });
+    catLabel.textContent = cat;
+    svg.appendChild(catLabel);
+
+    if (tooltipHtml) {
+      const hitArea = svgEl("rect", { x: padL + slotW * i, y: padT, width: slotW, height: plotH, fill: "transparent", style: "cursor:pointer;" });
+      const hoverBg = svgEl("rect", { x: padL + slotW * i, y: padT, width: slotW, height: plotH, fill: "#16324a", opacity: 0, style: "transition:opacity .12s ease; pointer-events:none;" });
+      svg.insertBefore(hoverBg, svg.firstChild);
+      hitArea.addEventListener("mouseenter", () => hoverBg.setAttribute("opacity", "0.04"));
+      hitArea.addEventListener("mousemove", e => showTooltip(i, e.clientX, e.clientY));
+      hitArea.addEventListener("mouseleave", () => { hoverBg.setAttribute("opacity", "0"); hideTooltip(); });
+      svg.appendChild(hitArea);
+    }
+  });
+
+  const wrap = document.createElement("div");
+  wrap.className = "svg-chart-wrap";
+  wrap.style.position = "relative";
+  wrap.appendChild(svg);
+
+  const tooltip = tooltipHtml ? getPortalTooltip(container) : null;
+  function showTooltip(i, clientX, clientY) {
+    if (!tooltip) return;
+    tooltip.innerHTML = tooltipHtml(i);
+    positionPortalTooltip(tooltip, clientX, clientY);
+  }
+  function hideTooltip() { if (tooltip) tooltip.style.display = "none"; }
+
+  container.appendChild(wrap);
+}
+
+function drawStackedBarChart(container, opts) {
+  const { labels, series, formatValue, tooltipHtml, xAxisLabel, yAxisLabel } = opts; // series: [{name, color, values}]
+  container.innerHTML = "";
+
+  const rect = container.getBoundingClientRect();
+  const width = Math.max(280, Math.round(rect.width) || 900);
+  const availH = container.clientHeight || 300;
+  const longest = Math.max(...labels.map(l => l.length), 4);
+  const isNarrow = width < 520;
+  const totals = labels.map((_, i) => series.reduce((s, ser) => s + (ser.values[i] || 0), 0));
+  const totalLabelStrings = totals.map(v => formatValue ? formatValue(v) : fmtInt(v));
+  const longestValue = Math.max(...totalLabelStrings.map(s => s.length), 3);
+  const yTitleW = yAxisLabel ? 20 : 0;
+  const padL = yTitleW + Math.min(isNarrow ? 130 : 220, Math.max(isNarrow ? 70 : 90, longest * (isNarrow ? 6 : 7.5)));
+  const padR = Math.min(isNarrow ? 120 : 190, Math.max(64, longestValue * (isNarrow ? 6.2 : 7.2) + 24));
+  const padT = 10, padB = 26 + (xAxisLabel ? 20 : 0) + 26;
+  const plotW = width - padL - padR;
+
+  const minRowH = 32, maxRowH = 60;
+  let rowH = Math.floor((availH - padT - padB) / Math.max(1, labels.length));
+  rowH = Math.max(minRowH, Math.min(maxRowH, rowH));
+  const naturalH = padT + labels.length * rowH + padB;
+  const height = Math.max(availH, naturalH);
+  const topOffset = Math.max(0, (height - naturalH) / 2);
+  const padTAdj = padT + topOffset;
+
+  const rawMax = Math.max(...totals, 1);
+  const ticks = niceTicks(0, rawMax, 5);
+  const max = ticks[ticks.length - 1];
+  const rowsTop = padTAdj, rowsBottom = padTAdj + labels.length * rowH;
+  const xFor = v => padL + (v / max) * plotW;
+  const axisY = rowsBottom + 18;
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width: "100%", height: "100%" });
+
+  ticks.forEach(t => {
+    const x = xFor(t);
+    if (x < padL - 0.5 || x > width - padR + 0.5) return;
+    svg.appendChild(svgEl("line", { x1: x, x2: x, y1: rowsTop, y2: rowsBottom, stroke: "#e4e8de", "stroke-width": 1 }));
+    const tickLabel = svgEl("text", { x, y: axisY, "text-anchor": "middle", "font-size": isNarrow ? 9 : 11, "font-family": "IBM Plex Mono, monospace", fill: "#6b7d86" });
+    tickLabel.textContent = fmtTick(t);
+    svg.appendChild(tickLabel);
+  });
+  svg.appendChild(svgEl("line", { x1: padL, x2: padL, y1: rowsTop, y2: rowsBottom, stroke: "#c7cdb9", "stroke-width": 1 }));
+
+  if (xAxisLabel) {
+    const xLabel = svgEl("text", { x: padL + plotW / 2, y: rowsBottom + 36, "text-anchor": "middle", "font-size": isNarrow ? 10 : 11.5, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#6b7d86" });
+    xLabel.textContent = xAxisLabel;
+    svg.appendChild(xLabel);
+  }
+  if (yAxisLabel) {
+    const yMid = rowsTop + (rowsBottom - rowsTop) / 2;
+    const yLabel = svgEl("text", { x: 14, y: yMid, "text-anchor": "middle", "font-size": isNarrow ? 10 : 11.5, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#6b7d86", transform: `rotate(-90 14 ${yMid})` });
+    yLabel.textContent = yAxisLabel;
+    svg.appendChild(yLabel);
+  }
+
+  labels.forEach((label, i) => {
+    const y = rowsTop + i * rowH;
+    const labelEl = svgEl("text", { x: padL - 10, y: y + rowH / 2 + 4, "text-anchor": "end", "font-size": isNarrow ? 11 : 13, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#16324a" });
+    labelEl.textContent = label;
+    svg.appendChild(labelEl);
+
+    const barH = Math.min(20, rowH * 0.38);
+    let x = padL;
+    series.forEach(ser => {
+      const v = ser.values[i] || 0;
+      const w = (v / max) * plotW;
+      svg.appendChild(svgEl("rect", { x, y: y + (rowH - barH) / 2, width: Math.max(0, w), height: barH, fill: ser.color }));
+      x += w;
+    });
+    const valLabel = svgEl("text", { x: x + 8, y: y + rowH / 2 + 4, "font-size": isNarrow ? 11 : 12, "font-family": "IBM Plex Mono, monospace", fill: "#16324a" });
+    valLabel.textContent = formatValue ? formatValue(totals[i]) : totals[i];
+    svg.appendChild(valLabel);
+
+    if (tooltipHtml) {
+      const rowBg = svgEl("rect", { x: 0, y, width, height: rowH, fill: "#16324a", opacity: 0, style: "transition:opacity .12s ease; pointer-events:none;" });
+      svg.insertBefore(rowBg, svg.firstChild);
+      const hitArea = svgEl("rect", { x: 0, y, width, height: rowH, fill: "transparent", style: "cursor:pointer;" });
+      hitArea.addEventListener("mouseenter", () => { rowBg.setAttribute("opacity", "0.05"); });
+      hitArea.addEventListener("mousemove", e => showTooltip(i, e.clientX, e.clientY));
+      hitArea.addEventListener("mouseleave", () => { rowBg.setAttribute("opacity", "0"); hideTooltip(); });
+      svg.appendChild(hitArea);
+    }
+  });
+
+  const legendY = height - 12;
+  let lx = padL;
+  series.forEach(ser => {
+    svg.appendChild(svgEl("rect", { x: lx, y: legendY - 9, width: 10, height: 10, rx: 2, fill: ser.color }));
+    const t = svgEl("text", { x: lx + 14, y: legendY, "font-size": isNarrow ? 9.5 : 11, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#6b7d86" });
+    t.textContent = ser.name;
+    svg.appendChild(t);
+    lx += 14 + ser.name.length * (isNarrow ? 7 : 8) + 18;
+  });
+
+  const wrap = document.createElement("div");
+  wrap.className = "svg-chart-wrap";
+  wrap.style.height = height + "px";
+  wrap.style.position = "relative";
+  wrap.appendChild(svg);
+
+  const tooltip = tooltipHtml ? getPortalTooltip(container) : null;
+  function showTooltip(i, clientX, clientY) {
+    if (!tooltip) return;
+    tooltip.innerHTML = tooltipHtml(i);
+    positionPortalTooltip(tooltip, clientX, clientY);
+  }
+  function hideTooltip() { if (tooltip) tooltip.style.display = "none"; }
+
+  container.appendChild(wrap);
+}
+// opts: { segments: [{label, value, color}], formatValue, centerLabel, centerValue }
+function drawDonutChart(container, opts) {
+  const { segments, formatValue, centerLabel, centerValue } = opts;
+  container.innerHTML = "";
+
+  const outerRect = container.getBoundingClientRect();
+  const outerWidth = Math.max(260, Math.round(outerRect.width) || 420);
+  const isNarrow = outerWidth < 460;
+
+  // Stack the circle above the legend instead of splitting them side-by-side
+  // in a flex row — a flex row here made the legend column shrink to almost
+  // nothing (since the SVG also wants 100% width), wrapping every legend
+  // label into single characters that overlapped the value text.
+  const svgHeight = isNarrow ? 220 : 240;
+  const width = outerWidth;
+  const height = svgHeight;
+  const cx = width / 2;
+  const cy = height / 2;
+  const rOuter = Math.min(width, height) / 2 - 16;
+  const rInner = rOuter * 0.6;
+
+  const total = segments.reduce((s, x) => s + (x.value || 0), 0);
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width: "100%", height: `${svgHeight}px` });
+
+  if (total <= 0) {
+    container.innerHTML = '<div class="empty-note">ไม่มีข้อมูลสำหรับตัวเลือกนี้</div>';
+    return;
+  }
+
+  let angle = -Math.PI / 2;
+  const arcs = [];
+  segments.forEach(seg => {
+    const frac = (seg.value || 0) / total;
+    const a0 = angle;
+    const a1 = angle + frac * Math.PI * 2;
+    angle = a1;
+    arcs.push({ ...seg, a0, a1, frac });
+  });
+
+  function pt(r, a) { return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; }
+
+  const wrap = document.createElement("div");
+  wrap.className = "svg-chart-wrap donut-wrap";
+  wrap.style.height = svgHeight + "px";
+  wrap.style.position = "relative";
+  wrap.appendChild(svg);
+  container.appendChild(wrap);
+
+  const tooltip = getPortalTooltip(container);
+
+  function showTooltip(seg, clientX, clientY) {
+    const pct = fmtNumber(seg.frac * 100, 1);
+    tooltip.innerHTML = `<div class="tt-year">${seg.label}</div><div class="tt-row"><span class="tt-swatch" style="background:${seg.color}"></span>${formatValue ? formatValue(seg.value, seg.frac, seg.label) : seg.value}</div><div class="tt-row">สัดส่วน: <b>${pct}%</b></div>`;
+    positionPortalTooltip(tooltip, clientX, clientY);
+  }
+  function hideTooltip() { tooltip.style.display = "none"; }
+
+  const legendRowByIndex = [];
+
+  arcs.forEach((seg, i) => {
+    const [x0, y0] = pt(rOuter, seg.a0);
+    const [x1, y1] = pt(rOuter, seg.a1);
+    const [ix1, iy1] = pt(rInner, seg.a1);
+    const [ix0, iy0] = pt(rInner, seg.a0);
+    const large = (seg.a1 - seg.a0) > Math.PI ? 1 : 0;
+    const d = [
+      `M ${x0.toFixed(2)} ${y0.toFixed(2)}`,
+      `A ${rOuter} ${rOuter} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`,
+      `L ${ix1.toFixed(2)} ${iy1.toFixed(2)}`,
+      `A ${rInner} ${rInner} 0 ${large} 0 ${ix0.toFixed(2)} ${iy0.toFixed(2)}`,
+      "Z"
+    ].join(" ");
+    const path = svgEl("path", { d, fill: seg.color, stroke: "#fff", "stroke-width": 1.5, style: "cursor:pointer; transition:opacity .12s ease;" });
+    path.addEventListener("mouseenter", e => { path.setAttribute("opacity", "0.8"); showTooltip(seg, e.clientX, e.clientY); if (legendRowByIndex[i]) legendRowByIndex[i].classList.add("donut-legend-row--hover"); });
+    path.addEventListener("mousemove", e => showTooltip(seg, e.clientX, e.clientY));
+    path.addEventListener("mouseleave", () => { path.setAttribute("opacity", "1"); hideTooltip(); if (legendRowByIndex[i]) legendRowByIndex[i].classList.remove("donut-legend-row--hover"); });
+    svg.appendChild(path);
+  });
+
+  if (centerLabel !== undefined) {
+    const l1 = svgEl("text", { x: cx, y: cy - 4, "text-anchor": "middle", "font-size": isNarrow ? 18 : 22, "font-weight": 700, "font-family": "IBM Plex Mono, monospace", fill: "#16324a" });
+    l1.textContent = centerValue;
+    svg.appendChild(l1);
+    const l2 = svgEl("text", { x: cx, y: cy + 16, "text-anchor": "middle", "font-size": isNarrow ? 9.5 : 11, "font-family": "IBM Plex Sans Thai, sans-serif", fill: "#6b7d86" });
+    l2.textContent = centerLabel;
+    svg.appendChild(l2);
+  }
+
+  const legend = document.createElement("div");
+  legend.className = "donut-legend";
+  arcs.forEach((seg, i) => {
+    const row = document.createElement("div");
+    row.className = "donut-legend-row";
+    row.innerHTML = `<span class="legend-swatch" style="background:${seg.color}"></span><span class="donut-legend-text"><span class="donut-legend-label">${seg.label}</span><span class="donut-legend-val">${formatValue ? formatValue(seg.value, seg.frac, seg.label) : seg.value}</span></span>`;
+    row.addEventListener("mouseenter", e => { row.classList.add("donut-legend-row--hover"); showTooltip(seg, e.clientX, e.clientY); });
+    row.addEventListener("mousemove", e => showTooltip(seg, e.clientX, e.clientY));
+    row.addEventListener("mouseleave", () => { row.classList.remove("donut-legend-row--hover"); hideTooltip(); });
+    legendRowByIndex[i] = row;
+    legend.appendChild(row);
+  });
+  container.appendChild(legend);
+}
+
 
 /* ============================================================
    CONFIG
@@ -270,6 +948,202 @@ const INDICATOR_ORDER = Object.keys(INDICATOR_LABELS);
 const GROUP_LABELS = { BRICS: "BRICS", Tier: "Tier สูงกว่า", ASEAN: "อาเซียน" };
 const GROUP_ACCENT = { BRICS: "var(--rose)", Tier: "var(--sky)", ASEAN: "var(--indigo)" };
 const GROUP_ACCENT_DIM = { BRICS: "var(--rose-dim)", Tier: "var(--sky-dim)", ASEAN: "var(--indigo-dim)" };
+
+/* ============================================================
+   PRIVATE SECTOR DATA (ผลสำรวจการวิจัยและพัฒนาภาคเอกชน)
+   Source: สวทน./สอวช. ผลสำรวจเอกชนประจำปี 2567 (ข้อมูลปี 2566)
+   ============================================================ */
+const PRIVATE_DATA = {
+  sourceLabel: "ผลสำรวจการวิจัยและพัฒนาภาคเอกชน ประจำปี 2568 (ข้อมูลปี 2567) — วช./NSTDA",
+  trend: {
+    years: ["2563", "2564", "2565", "2566", "2567", "2568F"],
+    rdValueBn: [125.042317792, 115.722746095, 116.108927119, 98.087074190, 104.595270587, 113.097969308],
+    rdGdpPct: [0.7984162, 0.7149292, 0.6681374, 0.5463029, 0.5629788, null],
+    forecastIndex: 5
+  },
+  kpis: {
+    companiesSurveyed: 5745,
+    pctDoingRD: 51.2,
+    rdValueLatestBn: 137.45,
+    forecastRdBn: 146.37,
+    rdGdpTargetAchievementPct: 56.30,
+    innovationActivePct: 66.8,
+    ipActivePct: 13.2,
+    shareOfNationalRD: 69.05,
+    nationalRdGdpPct: 1.07,
+    fteResearchPersonnel: 116562,
+    hcResearchPersonnel: 121397,
+    avgExpenditurePerFirmMbaht: 8.41
+  },
+  industryExpenditureBn: [
+    { label: "Wholesale/Retail", value: 20.838, color: "var(--sky)" },
+    { label: "Service", value: 51.804, color: "var(--indigo)" },
+    { label: "Manufacturing", value: 64.804, color: "var(--teal)" }
+  ],
+  personnel: [
+    { label: "นักวิจัย ปริญญาตรี", value: 71707, color: "var(--teal)" },
+    { label: "ช่างเทคนิค/ผู้ช่วยนักวิจัย", value: 21586, color: "var(--amber)" },
+    { label: "นักวิจัย ปริญญาโท", value: 15841, color: "var(--sky)" },
+    { label: "ผู้ทำงานสนับสนุน", value: 5951, color: "var(--rose)" },
+    { label: "นักวิจัย ปริญญาเอก", value: 1477, color: "var(--indigo)" }
+  ],
+  obstacles: [
+    { label: "ตลาดไม่มีความต้องการนวัตกรรมด้านสินค้าหรือบริการใหม่", value: 0.348651001, high: 312, medium: 380, low: 307 },
+    { label: "ตลาดถูกครอบงำโดยกิจการที่ครองตลาดอยู่ก่อนแล้ว", value: 0.456919060, high: 344, medium: 636, low: 321 },
+    { label: "ความต้องการนวัตกรรมด้านสินค้าหรือบริการมีความไม่แน่นอน", value: 0.500261097, high: 323, medium: 726, low: 453 },
+    { label: "ขาดเงินทุนจากกิจการหรือกลุ่มกิจการของท่าน", value: 0.591296780, high: 349, medium: 898, low: 554 },
+    { label: "ขาดบุคลากรที่มีคุณสมบัติเหมาะสม", value: 0.667536989, high: 442, medium: 965, low: 579 },
+    { label: "ต้นทุนการทำนวัตกรรมสูงเกินไป", value: 0.719930374, high: 667, medium: 770, low: 595 }
+  ],
+  collaboration: [
+    { label: "มหาวิทยาลัย", value: 0.154221062, high: 82, medium: 242, low: 156 },
+    { label: "ซัพพลายเออร์ต่างชาติ", value: 0.581897302, high: 401, medium: 750, low: 640 },
+    { label: "ซัพพลายเออร์ไทย", value: 0.906701480, high: 933, medium: 996, low: 418 },
+    { label: "บริษัทแม่/กิจการในเครือ", value: 1.073281114, high: 1332, medium: 734, low: 702 },
+    { label: "ลูกค้า/ผู้ซื้อ", value: 1.689643168, high: 2519, medium: 925, low: 300 },
+    { label: "ร่วมมือภายในกิจการ", value: 2.012184508, high: 3116, medium: 864, low: 484 }
+  ],
+  researchTypeBn: [
+    { label: "วิจัยพื้นฐาน (Basic)", value: 4.689 },
+    { label: "วิจัยประยุกต์ (Applied)", value: 31.591 },
+    { label: "พัฒนาเชิงทดลอง (Experimental)", value: 101.166 }
+  ],
+  fieldOfScienceBn: [
+    { label: "วิทยาศาสตร์การแพทย์", value: 4.711 },
+    { label: "มนุษยศาสตร์", value: 7.888 },
+    { label: "สังคมศาสตร์", value: 8.465 },
+    { label: "เกษตรศาสตร์", value: 14.410 },
+    { label: "วิทยาศาสตร์ธรรมชาติ", value: 22.649 },
+    { label: "วิศวกรรมศาสตร์และเทคโนโลยี", value: 79.323 }
+  ],
+  personnelByGender: [
+    { role: "นักวิจัย ปริญญาเอก", male: 995, female: 472 },
+    { role: "นักวิจัย ปริญญาโท", male: 8882, female: 6962 },
+    { role: "นักวิจัย ปริญญาตรี", male: 40352, female: 31362 },
+    { role: "ช่างเทคนิค/ผู้ช่วยนักวิจัย", male: 15217, female: 6369 },
+    { role: "ผู้ทำงานสนับสนุน", male: 3049, female: 2902 }
+  ],
+  nationalTrend: {
+    years: ["2558", "2559", "2560", "2561", "2562", "2563", "2564", "2565", "2566", "2567"],
+    privateBn: [59.44256, 82.70123, 123.94204, 142.97224, 149.244, 141.70551, 144.887, 146.320, 112.12555, 137.446],
+    publicBn: [25.229, 30.826, 31.201, 34.000, 43.828, 44.000, 50.683, 55.093, 55.980, 61.613],
+    gdpPct: [0.62, 0.79, 1.00, 1.08, 1.14, 1.19, 1.21, 1.16, 0.94, 1.07]
+  }
+};
+
+/* ============================================================
+   PUBLIC SECTOR DATA (ภาครัฐ / สถาบันอุดมศึกษา)
+   Source: ฐานข้อมูลโครงการวิจัยปีงบประมาณ 2567, บุคลากรวิจัยปี 2567,
+   และวิทยานิพนธ์ปีการศึกษา 2566
+   ============================================================ */
+const PUBLIC_DATA = {
+  sourceLabel: "ฐานข้อมูลโครงการวิจัยภาครัฐปีงบประมาณ 2566-2567 และวิทยานิพนธ์ปีการศึกษา 2565-2566",
+  trend: {
+    projects: {
+      years: ["2566", "2567"],
+      countK: [24.729, 32.946],
+      budgetBn: [43.15, 37.49],
+      institutions: [653, 1522]
+    },
+    thesis: {
+      years: ["2565", "2566"],
+      totalK: [19.532, 21.977],
+      masterK: [15.933, 16.197],
+      phdK: [3.599, 4.686]
+    }
+  },
+  projects: {
+    totalProjects: 32946,
+    totalBudgetBn: 37.49,
+    budgetAllocatedBn: 54.08,
+    budgetUtilizationPct: 69.3,
+    uniqueInstitutions: 1522,
+    topInstitutionsByCount: [
+      { label: "มหาวิทยาลัยเชียงใหม่", value: 1649 },
+      { label: "มหาวิทยาลัยเกษตรศาสตร์", value: 1629 },
+      { label: "จุฬาลงกรณ์มหาวิทยาลัย", value: 1124 },
+      { label: "มหาวิทยาลัยสงขลานครินทร์", value: 1026 },
+      { label: "มหาวิทยาลัยมหิดล", value: 838 },
+      { label: "มหาวิทยาลัยขอนแก่น", value: 823 }
+    ],
+    topFundersByBudget: [
+      { label: "สกสว.", value: 1227.85, full: "สำนักงานคณะกรรมการส่งเสริมวิทยาศาสตร์ วิจัยและนวัตกรรม (สกสว.)" },
+      { label: "สวก.", value: 527.71, full: "สำนักงานพัฒนาการวิจัยการเกษตร (สวก.)" },
+      { label: "เงินอุดหนุนรัฐบาลและอื่นๆ", value: 496.37, full: "เงินอุดหนุนรัฐบาลและเงินอุดหนุนอื่นที่รัฐบาลจัดสรรให้" },
+      { label: "กรมวิชาการเกษตร", value: 281.19, full: "กรมวิชาการเกษตร" },
+      { label: "บริษัท ปตท. จำกัด (มหาชน)", value: 244.67, full: "บริษัท ปตท. จำกัด (มหาชน)" },
+      { label: "สป.อว.", value: 219.52, full: "สำนักงานปลัดกระทรวงการอุดมศึกษา วิทยาศาสตร์ วิจัยและนวัตกรรม (สป.อว.)" }
+    ],
+    researchType: [
+      { label: "วิจัยพื้นฐาน", value: 4992, budgetBn: 2.203, color: "var(--teal)" },
+      { label: "วิจัยประยุกต์", value: 2432, budgetBn: 1.649, color: "var(--indigo)" },
+      { label: "พัฒนาเชิงทดลอง", value: 1644, budgetBn: 1.474, color: "var(--sky)" }
+    ],
+    fieldOfScience: [
+      { label: "สังคมศาสตร์", value: 992, budgetBn: 0.442 },
+      { label: "วิทยาศาสตร์การแพทย์", value: 935, budgetBn: 0.330 },
+      { label: "วิศวกรรมศาสตร์และเทคโนโลยี", value: 838, budgetBn: 0.855 },
+      { label: "วิทยาศาสตร์ธรรมชาติ", value: 549, budgetBn: 0.541 },
+      { label: "เกษตรศาสตร์", value: 359, budgetBn: 0.136 },
+      { label: "มนุษยศาสตร์", value: 241, budgetBn: 0.035 }
+    ],
+    researchTypeNote: "จากโครงการที่ระบุประเภทการวิจัยชัดเจน (9,068 จาก 32,946 โครงการ)",
+    fieldNote: "จากโครงการที่ระบุสาขาการวิจัยหลักเป็นรหัสเดี่ยว (3,914 จาก 32,946 โครงการ)"
+  },
+  thesis: {
+    totalThesis: 21977,
+    totalBudgetMbaht: 230.76,
+    byLevel: [
+      { label: "ปริญญาโท", value: 16197, color: "var(--teal)" },
+      { label: "ปริญญาเอก", value: 4686, color: "var(--indigo)" },
+      { label: "ไม่ระบุระดับ", value: 1094, color: "var(--text-dim)" }
+    ],
+    topUniversities: [
+      { label: "จุฬาลงกรณ์มหาวิทยาลัย", value: 2409, topFields: [["รัฐประศาสนศาสตร์", 98], ["ความสัมพันธ์ระหว่างประเทศ", 79], ["วิศวกรรมเคมี", 68], ["วิศวกรรมโยธา", 60], ["อายุรศาสตร์", 58]] },
+      { label: "มหาวิทยาลัยขอนแก่น", value: 1282, topFields: [["บริหารธุรกิจมหาบัณฑิต แผน ข", 150], ["การบริหารการศึกษา แผน ก แบบ ก 2", 46], ["วิศวกรรมโยธา แผน ก แบบ ก 2", 30], ["บริหารธุรกิจมหาบัณฑิต แผน ข (อังกฤษ/จีน)", 27], ["วัฒนธรรม ศิลปกรรมและการออกแบบ", 26]] },
+      { label: "มหาวิทยาลัยธรรมศาสตร์", value: 1280, topFields: [["บริหารธุรกิจ", 86], ["นวัตกรรมทางธุรกิจ", 55], ["การบัญชีและการบริหารการเงิน", 50], ["ธุรกิจอสังหาริมทรัพย์", 49], ["บริหารรัฐกิจและกิจการสาธารณะ", 49]] },
+      { label: "มหาวิทยาลัยเชียงใหม่", value: 1254, topFields: [["บริหารธุรกิจ", 69], ["สาธารณสุขศาสตร์", 57], ["การบริหารการศึกษา", 48], ["เศรษฐศาสตร์", 42], ["พยาบาลศาสตร์", 35]] },
+      { label: "มหาวิทยาลัยมหิดล", value: 1231, topFields: [["การจัดการเทคโนโลยีสารสนเทศ", 64], ["เคมี", 31], ["นโยบายสาธารณะและการจัดการภาครัฐ", 31], ["การพยาบาลผู้ใหญ่และผู้สูงอายุ", 30], ["ดนตรี", 24]] },
+      { label: "มหาวิทยาลัยเกษตรศาสตร์", value: 1024, topFields: [["การบริหารทรัพยากรป่าไม้และสิ่งแวดล้อม", 46], ["วิศวกรรมโยธา", 27], ["การจัดการวิศวกรรมและเทคโนโลยี", 23], ["วิศวกรรมโครงสร้างพื้นฐานและการบริหาร", 21], ["บริหารธุรกิจ", 19]] }
+    ],
+    topFields: [
+      { label: "การบริหารการศึกษา", value: 2164 },
+      { label: "หลักสูตรและการสอน", value: 533 },
+      { label: "รัฐประศาสนศาสตร์", value: 499 },
+      { label: "บริหารธุรกิจ", value: 376 },
+      { label: "พระพุทธศาสนา", value: 367 },
+      { label: "การจัดการ", value: 347 }
+    ]
+  }
+};
+
+const PAGE_LABELS = {
+  private: "ภาคเอกชน",
+  public: "ภาครัฐ",
+  indicators: "ดัชนี 10 ตัว"
+};
+
+const NAV_SECTIONS = {
+  indicators: [
+    ["overview", "ภาพรวม"],
+    ["groups", "กลุ่มเปรียบเทียบ"],
+    ["explore", "แนวโน้ม & เปรียบเทียบ"],
+    ["table", "ตารางข้อมูล"],
+    ["insight", "ข้อสังเกต"]
+  ],
+  private: [
+    ["p-overview", "ภาพรวม"],
+    ["p-trend", "แนวโน้ม (หลายปี)"],
+    ["p-current", "ข้อมูลปี 2567"],
+    ["p-insight", "ข้อสังเกต"]
+  ],
+  public: [
+    ["g-overview", "ภาพรวม"],
+    ["g-trend", "แนวโน้ม (หลายปี)"],
+    ["g-current", "ข้อมูลปีปัจจุบัน"],
+    ["g-insight", "ข้อสังเกต"]
+  ]
+};
 
 const COUNTRY_COLORS = {
   Thailand: "#E8A33D",
@@ -457,6 +1331,52 @@ button{font-family:inherit;}
   letter-spacing:.04em;
   white-space:nowrap;
 }
+.flabel-wrap{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+}
+.info-btn{
+  width:15px;
+  height:15px;
+  flex-shrink:0;
+  border-radius:50%;
+  border:1px solid var(--teal-dim);
+  background:#fff;
+  color:var(--teal-dim);
+  font-size:9.5px;
+  font-family:var(--font-mono);
+  font-weight:600;
+  line-height:1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  padding:0;
+}
+.info-btn:hover, .info-btn:focus-visible{background:var(--teal); color:#fff; border-color:var(--teal);}
+.info-popover{
+  position:absolute;
+  top:calc(100% + 10px);
+  left:0;
+  z-index:60;
+  width:min(300px, calc(100vw - 48px));
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:13px 15px;
+  box-shadow:0 12px 30px rgba(18,35,52,.16);
+  font-size:12.5px;
+  color:var(--text-mid);
+  line-height:1.65;
+  text-transform:none;
+  letter-spacing:normal;
+  font-family:var(--font-thai);
+}
+.info-popover p{margin:0 0 8px;}
+.info-popover p:last-child{margin-bottom:0;}
+.info-popover b{color:var(--text); font-weight:700;}
 .fdivider{
   width:1px;
   height:20px;
@@ -736,7 +1656,13 @@ button{font-family:inherit;}
   line-height:1.6;
   pointer-events:none;
   min-width:150px;
+  max-width:280px;
   box-shadow:0 6px 18px rgba(0,0,0,.18);
+}
+.svg-tooltip-portal{
+  position:fixed !important;
+  z-index:9999;
+  top:0; left:0;
 }
 .svg-tooltip .tt-year{
   font-family:var(--font-mono);
@@ -855,6 +1781,300 @@ button:focus-visible, select:focus-visible, a:focus-visible{
   outline-offset:2px;
 }
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
+
+/* ============ PAGE SWITCHER ============ */
+.page-switcher{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  padding:14px 12px 6px;
+}
+.page-switcher-label{
+  font-size:10px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:var(--sidebar-text-dim);
+  padding:0 8px 6px;
+}
+.page-tab{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:9px 12px;
+  border-radius:9px;
+  font-size:13.5px;
+  font-weight:600;
+  color:var(--sidebar-text);
+  background:transparent;
+  border:1px solid transparent;
+  text-align:left;
+  cursor:pointer;
+}
+.page-tab:hover{background:rgba(255,255,255,.06);}
+.page-tab.active{
+  background:rgba(255,255,255,.1);
+  border-color:rgba(255,255,255,.14);
+  color:#fff;
+}
+.page-tab-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.sidebar-divider{
+  height:1px;
+  background:rgba(255,255,255,.08);
+  margin:6px 16px 10px;
+}
+
+/* ============ DONUT ============ */
+.donut-wrap{display:flex; align-items:center; justify-content:center;}
+.donut-legend{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));
+  gap:4px 12px;
+  padding:14px 4px 0;
+}
+.donut-legend-row{
+  display:flex;
+  align-items:flex-start;
+  gap:9px;
+  padding:6px 8px;
+  border-radius:8px;
+  cursor:pointer;
+  transition:background .12s ease;
+}
+.donut-legend-row--hover{background:var(--border-soft);}
+.donut-legend-row .legend-swatch{flex:0 0 auto; margin-top:4px;}
+.donut-legend-text{
+  display:flex;
+  flex-direction:column;
+  gap:1px;
+  min-width:0;
+}
+.donut-legend-label{
+  font-size:12.5px;
+  color:var(--text-mid);
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.35;
+}
+.donut-legend-val{
+  font-family:var(--font-mono);
+  font-weight:700;
+  font-size:13.5px;
+  color:var(--text);
+  white-space:nowrap;
+}
+
+/* ============ KPI CARD small variant ============ */
+.kpi-card .kpi-caption{font-size:10.5px; color:var(--text-dim); margin-top:2px;}
+
+@media (max-width:980px){
+  .private-kpi-row, .public-kpi-row{grid-template-columns:repeat(3,1fr);}
+}
+@media (max-width:760px){
+  .private-kpi-row, .public-kpi-row{grid-template-columns:repeat(2,1fr);}
+}
+
+/* ============ POWER BI STYLE (private / public pages) ============ */
+.pbi-page{
+  --pbi-navy:#0B2545;
+  --pbi-navy-2:#123159;
+  --pbi-blue:#3F6FBF;
+  --pbi-blue-dim:#2F5194;
+  margin:-4px -4px 0;
+}
+.pbi-header{
+  background:linear-gradient(135deg, var(--pbi-navy), var(--pbi-navy-2));
+  border-radius:var(--radius);
+  padding:22px 26px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:18px;
+  flex-wrap:wrap;
+}
+.pbi-header-title{
+  color:#fff;
+  font-size:22px;
+  font-weight:700;
+  letter-spacing:.01em;
+  margin:0;
+}
+.pbi-header-sub{
+  color:rgba(255,255,255,.68);
+  font-size:12.5px;
+  margin:4px 0 0;
+}
+.pbi-kpi-strip{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:16px 10px;
+  display:flex;
+  flex-wrap:wrap;
+  margin-bottom:20px;
+}
+.pbi-kpi-item{
+  flex:1 1 0;
+  min-width:118px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  text-align:center;
+  gap:4px;
+  padding:6px 10px;
+  border-right:1px solid var(--border-soft);
+}
+.pbi-kpi-item:last-child{border-right:none;}
+.pbi-kpi-icon{font-size:19px; line-height:1;}
+.pbi-kpi-value{
+  font-family:var(--font-mono);
+  font-size:20px;
+  font-weight:700;
+  color:var(--pbi-navy);
+  line-height:1.2;
+}
+.pbi-kpi-label{
+  font-size:10.5px;
+  color:var(--text-mid);
+  line-height:1.3;
+  max-width:140px;
+}
+.pbi-grid-2x2{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px;
+  margin-bottom:18px;
+}
+.pbi-panel{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+.pbi-panel--full{grid-column:1 / -1;}
+.pbi-panel-head{
+  background:var(--pbi-navy);
+  color:#fff;
+  font-size:13px;
+  font-weight:600;
+  padding:11px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.pbi-panel-head-sub{
+  color:rgba(255,255,255,.6);
+  font-weight:400;
+  font-size:11px;
+}
+.pbi-panel-body{
+  padding:12px 16px 14px;
+  flex:1;
+  min-height:200px;
+}
+.pbi-panel-body--hero{min-height:320px;}
+.pbi-panel-body--compact{min-height:160px;}
+.pbi-panel--hero .pbi-panel-head{padding:14px 18px; font-size:15px;}
+.pbi-panel--compact .pbi-panel-head{padding:9px 14px; font-size:12px;}
+.pbi-grid-hero{
+  display:grid;
+  grid-template-columns:1.6fr 1fr;
+  gap:18px;
+  margin-bottom:18px;
+}
+@media (max-width:900px){
+  .pbi-grid-hero{grid-template-columns:1fr;}
+}
+.pbi-panel-note{
+  padding:0 16px 12px;
+  font-size:11px;
+  color:var(--text-dim);
+}
+.pbi-insight{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin:0 16px 16px;
+  padding:12px 14px;
+  background:linear-gradient(135deg, #EEF3FC, #F5F0FA);
+  border-left:4px solid var(--pbi-blue);
+  border-radius:8px;
+  font-size:13px;
+  line-height:1.55;
+  color:#16324a;
+}
+.pbi-insight-icon{font-size:16px; line-height:1.4; flex-shrink:0;}
+.pbi-insight b{color:var(--pbi-navy); font-weight:700;}
+
+/* ============ DELTA KPI CARDS (with trend arrow) ============ */
+.pbi-delta-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+  gap:14px;
+  margin-bottom:18px;
+}
+.pbi-delta-card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:16px 18px;
+  border-top:3px solid var(--accent, var(--pbi-blue));
+}
+.pbi-delta-icon{
+  width:34px; height:34px;
+  border-radius:9px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px;
+  background:var(--accent-dim, #EEF3FC);
+  margin-bottom:10px;
+}
+.pbi-delta-label{font-size:12.5px; color:var(--text-mid); margin-bottom:4px;}
+.pbi-delta-value{font-family:var(--font-mono); font-size:24px; font-weight:700; color:var(--pbi-navy); line-height:1.2;}
+.pbi-delta-sub{font-size:11px; color:var(--text-dim); margin-top:2px;}
+.pbi-delta-change{
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:14px; font-weight:700;
+  margin-top:8px;
+  padding:3px 8px;
+  border-radius:6px;
+}
+.pbi-delta-change--up{color:#1F8A4C; background:#E6F5EB;}
+.pbi-delta-change--down{color:#C0392B; background:#FBEAEA;}
+.pbi-delta-compare{font-size:11px; color:var(--text-dim); margin-top:6px;}
+
+/* ============ WATCHLIST BOX ============ */
+.pbi-watchlist{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-left:4px solid var(--pbi-blue);
+  border-radius:8px;
+  padding:12px 16px;
+  font-size:12.5px;
+  color:#16324a;
+}
+.pbi-watchlist-title{font-weight:700; font-size:12px; color:var(--pbi-navy); margin-bottom:8px; text-transform:uppercase; letter-spacing:.02em;}
+.pbi-watchlist ul{margin:0; padding-left:18px;}
+.pbi-watchlist li{margin-bottom:5px; line-height:1.5;}
+.pbi-insight-row{display:grid; grid-template-columns:1.6fr 1fr; gap:16px; margin-top:18px;}
+@media (max-width:900px){.pbi-insight-row{grid-template-columns:1fr;}}
+.pbi-insight-donut-row{display:grid; grid-template-columns:280px 1fr; gap:16px; margin-bottom:4px;}
+@media (max-width:820px){.pbi-insight-donut-row{grid-template-columns:1fr;}}
+
+.pbi-section-title{
+  font-size:15px;
+  font-weight:700;
+  color:var(--pbi-navy);
+  margin:26px 0 14px;
+  padding-left:12px;
+  border-left:4px solid var(--pbi-blue);
+}
+@media (max-width:900px){
+  .pbi-grid-2x2{grid-template-columns:1fr;}
+  .pbi-kpi-item{flex:1 1 45%; border-right:none; border-bottom:1px solid var(--border-soft); padding-bottom:10px;}
+}
 `;
 
 /* ============================================================
@@ -902,20 +2122,60 @@ function latestValue(group, mode, country, indicator) {
 /* ============================================================
    APP COMPONENT
    ============================================================ */
+/* ---------- small formatting helpers for the new pages ---------- */
+function fmtBn(v) { return fmtNumber(v, 2); }
+function fmtPct1(v) { return fmtNumber(v, 1) + "%"; }
+function fmtInt(v) { return Math.round(v).toLocaleString("en-US"); }
+
 export default function App() {
+  const [page, setPage] = useState("private");
+
+  /* ---- indicators page state (unchanged) ---- */
   const [group, setGroup] = useState("BRICS");
   const [mode, setMode] = useState("value");
   const [indicator, setIndicator] = useState(INDICATOR_ORDER[1]);
   const [tableOpen, setTableOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState("overview");
+  const [activeSection, setActiveSection] = useState("p-overview");
+  const [modeInfoOpen, setModeInfoOpen] = useState(false);
 
   const trendRef = useRef(null);
   const barRef = useRef(null);
+  const modeInfoRef = useRef(null);
+
+  /* ---- private page refs ---- */
+  const privTrendRef = useRef(null);
+  const privIndustryRef = useRef(null);
+  const privDonutRef = useRef(null);
+  const privObstacleRef = useRef(null);
+  const privCollabRef = useRef(null);
+  const privResearchTypeRef = useRef(null);
+  const privFieldRef = useRef(null);
+  const privNationalRef = useRef(null);
+
+  /* ---- public page refs ---- */
+  const pubInstRef = useRef(null);
+  const pubFunderRef = useRef(null);
+  const pubProjTrendRef = useRef(null);
+  const pubThesisTrendRef = useRef(null);
+  const pubTypeRef = useRef(null);
+  const pubFieldRef = useRef(null);
+  const pubThesisUniRef = useRef(null);
+  const pubThesisDonutRef = useRef(null);
+  const pubThesisFieldRef = useRef(null);
+
+  useEffect(() => {
+    function onDocClick(e) {
+      if (modeInfoRef.current && !modeInfoRef.current.contains(e.target)) setModeInfoOpen(false);
+    }
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, []);
 
   const countries = useMemo(() => getCountriesForGroup(group, mode), [group, mode]);
 
-  function drawCharts() {
+  /* ---- indicators page chart drawing (unchanged logic) ---- */
+  function drawIndicatorCharts() {
     if (!trendRef.current || !barRef.current) return;
     const years = allYearsFor(group, mode, indicator);
     const datasets = countries.map(c => {
@@ -923,7 +2183,7 @@ export default function App() {
       const values = years.map(y => (rec && rec.data[y] !== undefined ? rec.data[y] : null));
       return { label: c, values, color: COUNTRY_COLORS[c] || "#999", highlight: c === "Thailand" };
     });
-    drawLineChart(trendRef.current, {
+    const domain = drawLineChart(trendRef.current, {
       years, datasets, reverseY: mode === "rank",
       formatValue: v => fmtNumber(v, mode === "rank" ? 0 : 2)
     });
@@ -943,28 +2203,304 @@ export default function App() {
       labels: countries, values,
       colors: countries.map(c => COUNTRY_COLORS[c] || "#999"),
       reverseX: mode === "rank",
-      formatValue: v => fmtNumber(v, mode === "rank" ? 0 : 2)
+      formatValue: v => fmtNumber(v, mode === "rank" ? 0 : 2),
+      domain
     });
   }
 
+  /* ---- private page chart drawing ---- */
+  function drawPrivateCharts() {
+    if (privTrendRef.current) {
+      const { years, rdValueBn, rdGdpPct, forecastIndex } = PRIVATE_DATA.trend;
+      const pointColors = ["#D9776B", "#E2A37E", "#E8B98A", "#5B9BD5", "#7B5EA7", "#E8823C"];
+      drawDualAxisLineChart(privTrendRef.current, {
+        years,
+        seriesLeft: { label: "R&D Value (Billion Baht)", values: rdValueBn, color: "#B7BEC7" },
+        seriesRight: { label: "R&D/GDP Target Achievement (%)", values: rdGdpPct, color: "#0B2545" },
+        formatLeft: v => fmtNumber(v, 0),
+        formatRight: v => fmtNumber(v, 2) + "%",
+        forecastFromIndex: forecastIndex,
+        pointColors
+      });
+    }
+    if (privIndustryRef.current) {
+      const ind = PRIVATE_DATA.industryExpenditureBn;
+      const indTotal = ind.reduce((s, d) => s + d.value, 0);
+      drawBarChart(privIndustryRef.current, {
+        labels: ind.map(d => d.label),
+        values: ind.map(d => d.value),
+        colors: ind.map(() => "#3F6FBF"),
+        formatValue: v => fmtNumber(v, 1) + " พันล้านบาท",
+        tooltipHtml: i => {
+          const d = ind[i];
+          return `<div class="tt-year">${d.label}</div>
+            <div class="tt-row">มูลค่า R&D: <b>${fmtNumber(d.value, 2)} พันล้านบาท</b></div>
+            <div class="tt-row">สัดส่วนของ R&D เอกชนรวม: <b>${fmtNumber(d.value / indTotal * 100, 1)}%</b></div>`;
+        }
+      });
+    }
+    if (privDonutRef.current) {
+      const total = PRIVATE_DATA.personnel.reduce((s, x) => s + x.value, 0);
+      const donutPalette = ["#0B2545", "#17406E", "#2B5D93", "#4A7FB5", "#8FB3DA"];
+      const genderByRole = {};
+      PRIVATE_DATA.personnelByGender.forEach(d => { genderByRole[d.role] = d; });
+      drawDonutChart(privDonutRef.current, {
+        segments: PRIVATE_DATA.personnel.map((d, i) => ({ ...d, color: donutPalette[i] })),
+        centerLabel: "บุคลากรวิจัย (FTE) ปี 2567",
+        centerValue: fmtInt(total),
+        formatValue: (v, f, label) => {
+          const g = genderByRole[label];
+          const main = `${fmtInt(v)} คน-ปี (${fmtNumber(f * 100, 1)}%)`;
+          if (!g) return main;
+          const mPct = fmtNumber(g.male / v * 100, 1);
+          const fPct = fmtNumber(g.female / v * 100, 1);
+          return `${main}
+            <div style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:#3F6FBF;margin-top:4px;"><span style="width:10px;height:10px;border-radius:50%;background:#3F6FBF;flex-shrink:0;"></span>ชาย ${fmtInt(g.male)} คน-ปี (${mPct}%)</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:#D46A9F;margin-top:3px;"><span style="width:10px;height:10px;border-radius:50%;background:#F5A9CB;flex-shrink:0;"></span>หญิง ${fmtInt(g.female)} คน-ปี (${fPct}%)</div>`;
+        }
+      });
+    }
+    // The live Power BI charts scale each panel to its own bar values
+    // (obstacles ~0-700, partners ~0-3,500) — matching that means NOT
+    // sharing one axis between the two anymore.
+    if (privObstacleRef.current) {
+      const obs = PRIVATE_DATA.obstacles;
+      drawBarChart(privObstacleRef.current, {
+        labels: obs.map(d => d.label),
+        values: obs.map(d => d.high),
+        colors: obs.map(() => "#3F6FBF"),
+        formatValue: v => fmtInt(v),
+        xAxisLabel: "จำนวนบริษัทที่ให้ความสำคัญระดับสูง",
+        yAxisLabel: "อุปสรรค",
+        tooltipHtml: i => {
+          const d = obs[i];
+          const total = d.high + d.medium + d.low;
+          return `<div class="tt-year">${d.label}</div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#c0392b"></span>ให้ความสำคัญมาก (High): <b>${fmtInt(d.high)}</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#e2a33d"></span>ปานกลาง (Medium): <b>${fmtInt(d.medium)}</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#9aa5b1"></span>น้อย (Low): <b>${fmtInt(d.low)}</b></div>
+            <div class="tt-row">รวมผู้ตอบ: <b>${fmtInt(total)}</b></div>
+            <div class="tt-row">คะแนนเฉลี่ย (Avg score): <b>${fmtNumber(d.value, 3)}</b></div>`;
+        }
+      });
+    }
+    if (privCollabRef.current) {
+      const collab = PRIVATE_DATA.collaboration;
+      drawBarChart(privCollabRef.current, {
+        labels: collab.map(d => d.label),
+        values: collab.map(d => d.high),
+        colors: collab.map(() => "#3F6FBF"),
+        formatValue: v => fmtInt(v),
+        xAxisLabel: "จำนวนบริษัทที่ให้ระดับความร่วมมือสูง",
+        yAxisLabel: "พันธมิตร",
+        tooltipHtml: i => {
+          const d = collab[i];
+          const total = d.high + d.medium + d.low;
+          return `<div class="tt-year">${d.label}</div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#c0392b"></span>ให้ความสำคัญมาก (High): <b>${fmtInt(d.high)}</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#e2a33d"></span>ปานกลาง (Medium): <b>${fmtInt(d.medium)}</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#9aa5b1"></span>น้อย (Low): <b>${fmtInt(d.low)}</b></div>
+            <div class="tt-row">รวมผู้ตอบ: <b>${fmtInt(total)}</b></div>
+            <div class="tt-row">คะแนนเฉลี่ย (Avg score): <b>${fmtNumber(d.value, 3)}</b></div>`;
+        }
+      });
+    }
+    if (privResearchTypeRef.current) {
+      const rt = PRIVATE_DATA.researchTypeBn;
+      const rtTotal = rt.reduce((s, d) => s + d.value, 0);
+      const rtPalette = ["#0B2545", "#3F6FBF", "#8FB3DA"];
+      drawDonutChart(privResearchTypeRef.current, {
+        segments: rt.map((d, i) => ({ ...d, color: rtPalette[i] })),
+        centerLabel: "R&D เอกชน ปี 2567",
+        centerValue: fmtNumber(rtTotal, 1) + " พันล้านบาท",
+        formatValue: (v, f) => `${fmtNumber(v, 1)} พันล้านบาท (${fmtNumber(f * 100, 1)}%)`
+      });
+    }
+    if (privFieldRef.current) {
+      const fs = PRIVATE_DATA.fieldOfScienceBn;
+      const fsTotal = fs.reduce((s, d) => s + d.value, 0);
+      drawBarChart(privFieldRef.current, {
+        labels: fs.map(d => d.label),
+        values: fs.map(d => d.value),
+        colors: fs.map(() => "#3F6FBF"),
+        formatValue: v => fmtNumber(v, 1) + " พันล้านบาท",
+        tooltipHtml: i => {
+          const d = fs[i];
+          return `<div class="tt-year">${d.label}</div>
+            <div class="tt-row">มูลค่า R&D: <b>${fmtNumber(d.value, 2)} พันล้านบาท</b></div>
+            <div class="tt-row">สัดส่วนของ R&D เอกชนรวม: <b>${fmtNumber(d.value / fsTotal * 100, 1)}%</b></div>`;
+        }
+      });
+    }
+
+    if (privNationalRef.current) {
+      const nt = PRIVATE_DATA.nationalTrend;
+      drawStackedBarChart(privNationalRef.current, {
+        labels: nt.years,
+        series: [
+          { name: "ภาคเอกชน", color: "#3F6FBF", values: nt.privateBn },
+          { name: "ภาครัฐ", color: "#0B2545", values: nt.publicBn }
+        ],
+        formatValue: v => fmtNumber(v, 1),
+        xAxisLabel: "มูลค่า R&D รวมประเทศ (พันล้านบาท)",
+        yAxisLabel: "ปี",
+        tooltipHtml: i => {
+          const priv = nt.privateBn[i], pub = nt.publicBn[i], total = priv + pub;
+          return `<div class="tt-year">ปี ${nt.years[i]}</div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#3F6FBF"></span>ภาคเอกชน: <b>${fmtNumber(priv, 1)} bn (${fmtNumber(priv / total * 100, 1)}%)</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#0B2545"></span>ภาครัฐ: <b>${fmtNumber(pub, 1)} bn (${fmtNumber(pub / total * 100, 1)}%)</b></div>
+            <div class="tt-row">รวมประเทศ: <b>${fmtNumber(total, 1)} bn</b></div>
+            <div class="tt-row">R&D/GDP: <b>${fmtNumber(nt.gdpPct[i], 2)}%</b></div>`;
+        }
+      });
+    }
+  }
+
+  /* ---- public page chart drawing ---- */
+  function drawPublicCharts() {
+    const P = PUBLIC_DATA.projects, T = PUBLIC_DATA.thesis, TR = PUBLIC_DATA.trend;
+    if (pubProjTrendRef.current) {
+      drawComboChart(pubProjTrendRef.current, {
+        categories: TR.projects.years,
+        bars: { name: "จำนวนโครงการวิจัย", color: "#3F6FBF", values: TR.projects.countK.map(v => v * 1000) },
+        line: { name: "งบประมาณเบิกจ่าย (พันล้านบาท)", color: "#0B2545", values: TR.projects.budgetBn },
+        formatBars: v => fmtInt(v) + " โครงการ",
+        formatLine: v => fmtNumber(v, 2) + " พันล้านบาท"
+      });
+    }
+    if (pubThesisTrendRef.current) {
+      drawGroupedColumnChart(pubThesisTrendRef.current, {
+        categories: TR.thesis.years.map(y => `ปีการศึกษา ${y}`),
+        seriesLeft: { name: "ปริญญาโท (เรื่อง)", color: "#3F6FBF", values: TR.thesis.masterK.map(v => v * 1000) },
+        seriesRight: { name: "ปริญญาเอก (เรื่อง)", color: "#0B2545", values: TR.thesis.phdK.map(v => v * 1000) },
+        formatLeft: v => fmtNumber(v, 0),
+        formatRight: v => fmtNumber(v, 0),
+        tooltipHtml: i => {
+          const master = TR.thesis.masterK[i] * 1000, phd = TR.thesis.phdK[i] * 1000;
+          return `<div class="tt-year">ปีการศึกษา ${TR.thesis.years[i]}</div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#3F6FBF"></span>ปริญญาโท: <b>${fmtInt(master)} เรื่อง</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#0B2545"></span>ปริญญาเอก: <b>${fmtInt(phd)} เรื่อง</b></div>`;
+        }
+      });
+    }
+    if (pubInstRef.current) {
+      drawBarChart(pubInstRef.current, {
+        labels: P.topInstitutionsByCount.map(d => d.label),
+        values: P.topInstitutionsByCount.map(d => d.value),
+        colors: P.topInstitutionsByCount.map(() => "#3F6FBF"),
+        formatValue: v => fmtInt(v) + " โครงการ"
+      });
+    }
+    if (pubFunderRef.current) {
+      drawBarChart(pubFunderRef.current, {
+        labels: P.topFundersByBudget.map(d => d.label),
+        values: P.topFundersByBudget.map(d => d.value),
+        colors: P.topFundersByBudget.map(() => "#3F6FBF"),
+        formatValue: v => fmtNumber(v, 1) + " ล้านบาท",
+        tooltipHtml: i => {
+          const d = P.topFundersByBudget[i];
+          return `<div class="tt-year">${d.full || d.label}</div>
+            <div class="tt-row">งบประมาณ: <b>${fmtNumber(d.value, 2)} ล้านบาท</b></div>`;
+        }
+      });
+    }
+    if (pubTypeRef.current) {
+      drawBarChart(pubTypeRef.current, {
+        labels: P.researchType.map(d => d.label),
+        values: P.researchType.map(d => d.value),
+        colors: P.researchType.map(() => "#3F6FBF"),
+        formatValue: v => fmtInt(v) + " โครงการ",
+        tooltipHtml: i => {
+          const d = P.researchType[i];
+          return `<div class="tt-year">${d.label}</div>
+            <div class="tt-row">จำนวนโครงการ: <b>${fmtInt(d.value)} โครงการ</b></div>
+            <div class="tt-row">งบประมาณรวม: <b>${fmtNumber(d.budgetBn, 2)} พันล้านบาท</b></div>`;
+        }
+      });
+    }
+    if (pubFieldRef.current) {
+      drawBarChart(pubFieldRef.current, {
+        labels: P.fieldOfScience.map(d => d.label),
+        values: P.fieldOfScience.map(d => d.value),
+        colors: P.fieldOfScience.map(() => "#3F6FBF"),
+        formatValue: v => fmtInt(v) + " โครงการ",
+        tooltipHtml: i => {
+          const d = P.fieldOfScience[i];
+          return `<div class="tt-year">${d.label}</div>
+            <div class="tt-row">จำนวนโครงการ: <b>${fmtInt(d.value)} โครงการ</b></div>
+            <div class="tt-row">งบประมาณรวม: <b>${fmtNumber(d.budgetBn, 2)} พันล้านบาท</b></div>`;
+        }
+      });
+    }
+    if (pubThesisDonutRef.current) {
+      const total = T.byLevel.reduce((s, x) => s + x.value, 0);
+      const donutPalette = ["#0B2545", "#2B5D93", "#8FB3DA"];
+      drawDonutChart(pubThesisDonutRef.current, {
+        segments: T.byLevel.map((d, i) => ({ ...d, color: donutPalette[i] })),
+        centerLabel: "วิทยานิพนธ์ ปีการศึกษา 2566",
+        centerValue: fmtInt(total),
+        formatValue: (v, f) => `${fmtInt(v)} เรื่อง (${fmtNumber(f * 100, 1)}%)`
+      });
+    }
+    if (pubThesisUniRef.current) {
+      drawBarChart(pubThesisUniRef.current, {
+        labels: T.topUniversities.map(d => d.label),
+        values: T.topUniversities.map(d => d.value),
+        colors: T.topUniversities.map(() => "#3F6FBF"),
+        formatValue: v => fmtInt(v) + " เรื่อง",
+        tooltipHtml: i => {
+          const d = T.topUniversities[i];
+          const rows = d.topFields.map(([name, count]) =>
+            `<div class="tt-row">${name}: <b>${fmtInt(count)} เรื่อง</b></div>`
+          ).join("");
+          return `<div class="tt-year">${d.label}</div>
+            <div class="tt-row">รวม: <b>${fmtInt(d.value)} เรื่อง</b></div>
+            <div style="margin-top:4px; padding-top:4px; border-top:1px solid rgba(255,255,255,.15); font-size:11px; opacity:.85;">สาขาที่จบสูงสุด 5 อันดับ</div>
+            ${rows}`;
+        }
+      });
+    }
+    if (pubThesisFieldRef.current) {
+      drawBarChart(pubThesisFieldRef.current, {
+        labels: T.topFields.map(d => d.label),
+        values: T.topFields.map(d => d.value),
+        colors: T.topFields.map(() => "#3F6FBF"),
+        formatValue: v => fmtInt(v) + " เรื่อง"
+      });
+    }
+  }
+
+  function drawAllForPage() {
+    if (page === "indicators") drawIndicatorCharts();
+    else if (page === "private") drawPrivateCharts();
+    else if (page === "public") drawPublicCharts();
+  }
+
   useEffect(() => {
-    drawCharts();
+    drawAllForPage();
     let t;
-    const onResize = () => { clearTimeout(t); t = setTimeout(drawCharts, 150); };
+    const onResize = () => { clearTimeout(t); t = setTimeout(drawAllForPage, 150); };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group, mode, indicator]);
+  }, [page, group, mode, indicator]);
 
   useEffect(() => {
-    const ids = ["overview", "groups", "explore", "insight", "table"];
+    const ids = (NAV_SECTIONS[page] || []).map(([id]) => id);
+    setActiveSection(ids[0]);
     const obs = new IntersectionObserver(entries => {
       entries.forEach(e => { if (e.isIntersecting) setActiveSection(e.target.id); });
     }, { rootMargin: "-40% 0px -50% 0px" });
     ids.forEach(id => { const el = document.getElementById(id); if (el) obs.observe(el); });
     return () => obs.disconnect();
-  }, []);
+  }, [page]);
 
+  function switchPage(p) {
+    setPage(p);
+    setSidebarOpen(false);
+  }
+
+  /* ---- indicators page derived data (unchanged) ---- */
   const pctInd = "Total expenditure on R&D (%) (WCY)";
   const kpiPct = latestValue("BRICS", "value", "Thailand", pctInd);
   const kpiRank = latestValue("BRICS", "rank", "Thailand", pctInd);
@@ -996,14 +2532,30 @@ export default function App() {
     return { group: g, count: countriesInGroup.length, thVal, avg, diff, isUp };
   });
 
-  const notes = [
+  const indicatorNotes = [
     { accent: "var(--amber)", title: "การลงทุนเติบโตต่อเนื่องแต่ไม่สม่ำเสมอ", body: "งบ R&D ต่อ GDP ของไทยเพิ่มจาก 0.12% (2538) เป็นระดับ 1% ในช่วงปี 2560 เป็นต้นมา แต่มีความผันผวนปีต่อปี ไม่ใช่แนวโน้มเส้นตรง" },
     { accent: "var(--sky)", title: "ช่องว่างกับกลุ่ม Tier สูงกว่ายังมาก", body: "เมื่อเทียบกับเกาหลีใต้ ไต้หวัน และญี่ปุ่นซึ่งลงทุน R&D สูงกว่า 3–5% ของ GDP ไทยยังตามหลังอยู่หลายเท่าตัว" },
     { accent: "var(--indigo)", title: "ไทยยังนำหน้าในกลุ่มอาเซียน", body: "ยกเว้นสิงคโปร์ ไทยมีสัดส่วนการลงทุน R&D สูงกว่ามาเลเซีย ฟิลิปปินส์ และอินโดนีเซียในช่วงข้อมูลล่าสุด" }
   ];
 
-  const tableYears = allYearsFor(group, mode, indicator);
+  const tableYears = allYearsFor(group, mode, indicator).slice().reverse();
   const chartUnit = (RD_DATA[group][mode]["Thailand"][indicator] || {}).unit || "";
+
+  /* ---- private page notes ---- */
+  const privateNotes = [
+    { accent: "var(--teal)", title: "R&D เอกชนฟื้นตัวแรงในปี 2567", body: "R&D ภาคเอกชนเพิ่มขึ้นจาก 112.1 พันล้านบาท (2566) เป็น 137.4 พันล้านบาท (2567) หรือ +22.5% ทำให้สัดส่วน R&D รวมประเทศต่อ GDP ปรับขึ้นจาก 0.94% เป็น 1.07% ในปีเดียวกัน" },
+    { accent: "var(--rose)", title: "ภาคการผลิตยังเป็นฐาน R&D หลัก", body: "อุตสาหกรรมการผลิต (Manufacturing) มีค่าใช้จ่าย R&D สูงสุดที่ 64.8 พันล้านบาท เกือบครึ่งหนึ่งของ R&D เอกชนทั้งหมด รองลงมาคือภาคบริการ (51.8 พันล้านบาท) และภาคค้าส่ง/ค้าปลีก (20.8 พันล้านบาท)" },
+    { accent: "var(--sky)", title: "ต้นทุนและบุคลากรยังเป็นอุปสรรคอันดับต้น", body: "กิจการภาคเอกชนให้ความสำคัญกับ “ต้นทุนการทำนวัตกรรมสูงเกินไป” และ “ขาดบุคลากรที่มีคุณสมบัติเหมาะสม” เป็นอุปสรรคอันดับ 1–2 ต่อการทำ R&D และนวัตกรรม ขณะที่ความร่วมมือภายในกิจการเองเป็นช่องทางความร่วมมือที่กิจการพึ่งพามากที่สุด" }
+  ];
+
+  /* ---- public page notes ---- */
+  const publicNotes = [
+    { accent: "var(--teal)", title: "มหาวิทยาลัยรัฐเป็นฐานหลักของงานวิจัย", body: "5 ใน 6 หน่วยงานที่มีโครงการสูงสุดเป็นมหาวิทยาลัย" },
+    { accent: "var(--indigo)", title: "สกสว. เป็นแหล่งทุนหลัก", body: "มีวงเงินสูงที่สุดในปี 2567" },
+    { accent: "var(--amber)", title: "วิทยานิพนธ์ยังเน้นระดับปริญญาโท", body: "ปริญญาโท 73.7% เทียบปริญญาเอก 21.3% ของวิทยานิพนธ์ทั้งหมด" }
+  ];
+
+  const navSections = NAV_SECTIONS[page];
 
   return (
     <>
@@ -1015,207 +2567,570 @@ export default function App() {
               <img src={LOGO_B64} alt="ETDA Research and Consulting Center" className="brand-logo" />
             </span>
           </div>
+
+          <div className="page-switcher">
+            <div className="page-switcher-label">แดชบอร์ด</div>
+            {["private", "public", "indicators"].map(p => (
+              <button key={p} className={`page-tab${page === p ? " active" : ""}`} onClick={() => switchPage(p)}>
+                <span className="page-tab-dot" style={{ background: p === "private" ? "var(--teal)" : p === "public" ? "var(--indigo)" : "var(--amber)" }} />
+                {PAGE_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          <div className="sidebar-divider" />
+
           <nav className="sidebar-nav">
-            {[
-              ["overview", "ภาพรวม"],
-              ["groups", "กลุ่มเปรียบเทียบ"],
-              ["explore", "แนวโน้ม & เปรียบเทียบ"],
-              ["table", "ตารางข้อมูล"],
-              ["insight", "ข้อสังเกต"]
-            ].map(([id, label]) => (
-              <a key={id} href={`#${id}`} className={`nav-item${activeSection === id ? " active" : ""}`} onClick={() => setSidebarOpen(false)}>{label}</a>
+            {navSections.map(([id, label]) => (
+              <a
+                key={id}
+                href={`#${id}`}
+                className={`nav-item${activeSection === id ? " active" : ""}`}
+                onClick={e => {
+                  e.preventDefault();
+                  setSidebarOpen(false);
+                  const el = document.getElementById(id);
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >{label}</a>
             ))}
           </nav>
           <div className="sidebar-foot">
             <div className="foot-label">ที่มาข้อมูล</div>
-            <div className="foot-value">IMD World Competitiveness<br />Online 1995–2026</div>
+            <div className="foot-value">
+              {page === "indicators" && <>IMD World Competitiveness<br />Online 1995–2026</>}
+              {page === "private" && <>ผลสำรวจ R&amp;D ภาคเอกชน<br />ปี 2567 (ข้อมูลปี 2566)</>}
+              {page === "public" && <>ฐานข้อมูลโครงการวิจัยภาครัฐ<br />ปีงบประมาณ 2567</>}
+            </div>
           </div>
         </aside>
 
         <div className="main-col">
           <header className="topbar">
             <button className="burger" aria-label="เมนู" onClick={() => setSidebarOpen(o => !o)}>☰</button>
-            <div className="filter-cluster">
-              <span className="flabel">กลุ่มเทียบ</span>
-              <div className="seg">
-                {["BRICS", "Tier", "ASEAN"].map(g => (
-                  <button key={g} className={`seg-btn${group === g ? " active" : ""}`} onClick={() => setGroup(g)}>{GROUP_LABELS[g]}</button>
-                ))}
+            {page === "indicators" && (
+              <div className="filter-cluster">
+                <span className="flabel">กลุ่มเทียบ</span>
+                <div className="seg">
+                  {["BRICS", "Tier", "ASEAN"].map(g => (
+                    <button key={g} className={`seg-btn${group === g ? " active" : ""}`} onClick={() => setGroup(g)}>{GROUP_LABELS[g]}</button>
+                  ))}
+                </div>
+                <span className="fdivider" />
+                <span className="flabel-wrap" ref={modeInfoRef}>
+                  <span className="flabel">มุมมอง</span>
+                  <button
+                    type="button"
+                    className="info-btn"
+                    aria-label="คำอธิบายมุมมอง ค่าจริง และ อันดับ"
+                    onClick={e => { e.stopPropagation(); setModeInfoOpen(o => !o); }}
+                  >?</button>
+                  {modeInfoOpen && (
+                    <div className="info-popover">
+                      <p><b>ค่าจริง (Value):</b> ตัวเลขจริงตามหน่วยของตัวชี้วัดนั้น เช่น % ของ GDP, ดอลลาร์สหรัฐ, จำนวนคน</p>
+                      <p><b>อันดับ (Rank):</b> อันดับของประเทศนั้น เทียบกับทุกเขตเศรษฐกิจใน IMD WCY ทั้งหมด (ไม่ใช่เทียบแค่ในกลุ่มที่เลือก) — ตัวเลขยิ่งน้อย อันดับยิ่งดี</p>
+                    </div>
+                  )}
+                </span>
+                <div className="seg">
+                  <button className={`seg-btn${mode === "value" ? " active" : ""}`} onClick={() => setMode("value")}>ค่าจริง</button>
+                  <button className={`seg-btn${mode === "rank" ? " active" : ""}`} onClick={() => setMode("rank")}>อันดับ</button>
+                </div>
               </div>
-              <span className="fdivider" />
-              <span className="flabel">มุมมอง</span>
-              <div className="seg">
-                <button className={`seg-btn${mode === "value" ? " active" : ""}`} onClick={() => setMode("value")}>ค่าจริง</button>
-                <button className={`seg-btn${mode === "rank" ? " active" : ""}`} onClick={() => setMode("rank")}>อันดับ</button>
+            )}
+            {page !== "indicators" && (
+              <div className="filter-cluster">
+                <span className="eyebrow-pill" style={{ margin: 0 }}>{page === "private" ? "PRIVATE SECTOR R&D" : "PUBLIC SECTOR R&D"}</span>
               </div>
-            </div>
+            )}
           </header>
 
           <main className="content">
-            <section id="overview" className="section hero-section">
-              <p className="eyebrow-pill">IMD WORLD COMPETITIVENESS YEARBOOK · 2569</p>
-              <h1>สถานะการลงทุนวิจัยและพัฒนา (R&amp;D) ของไทย</h1>
-              <p className="lede">เทียบศักยภาพค่าใช้จ่ายและบุคลากรด้าน R&amp;D ของไทยกับกลุ่ม BRICS, กลุ่มเศรษฐกิจ Tier ที่สูงกว่า และกลุ่มอาเซียน ในช่วงปี 1995–2024</p>
-              <div className="kpi-row">
-                {kpiCards.map((c, i) => (
-                  <div className="kpi-card" style={{ "--accent": c.accent }} key={i}>
-                    <span className="kpi-icon">{c.icon}</span>
-                    <div className="kpi-label">{c.label}</div>
-                    <div className="kpi-value">{c.value}<small>{c.unit}</small></div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="insight-callout" dangerouslySetInnerHTML={{ __html: insightHTML }} />
-
-            <section id="groups" className="section">
-              <div className="section-head">
-                <span className="section-num">01</span>
-                <div>
-                  <h2>ไทยเทียบกับ 3 กลุ่มประเทศ</h2>
-                  <p className="section-sub">ผลต่างค่าใช้จ่าย R&amp;D ต่อ GDP ของไทย เทียบค่าเฉลี่ยแต่ละกลุ่ม (ปีล่าสุดที่มีข้อมูล)</p>
-                </div>
-              </div>
-              <div className="group-cards">
-                {groupCardsData.map(gc => (
-                  <div
-                    className="group-card"
-                    key={gc.group}
-                    style={{ "--accent": GROUP_ACCENT[gc.group], "--accent-dim": GROUP_ACCENT_DIM[gc.group] }}
-                    onClick={() => {
-                      setGroup(gc.group);
-                      document.getElementById("explore").scrollIntoView({ behavior: "smooth", block: "start" });
-                    }}
-                  >
-                    <div className="group-card-title"><span className="group-dot" />{GROUP_LABELS[gc.group]}</div>
-                    <div className="group-card-sub">ไทย vs ค่าเฉลี่ยกลุ่ม ({gc.count} ประเทศ) · ค่าใช้จ่าย R&amp;D % ของ GDP</div>
-                    <div className="group-card-value">{gc.thVal ? fmtNumber(gc.thVal.value, 2) : "–"}<small>% (ไทย, {gc.thVal ? gc.thVal.year : "-"})</small></div>
-                    <div>
-                      {gc.diff !== null && (
-                        <span className={`group-card-badge ${gc.isUp ? "badge-up" : "badge-down"}`}>
-                          {gc.isUp ? "▲" : "▼"} {fmtNumber(Math.abs(gc.diff), 2)} จุด {gc.isUp ? "สูงกว่า" : "ต่ำกว่า"}ค่าเฉลี่ยกลุ่ม ({fmtNumber(gc.avg, 2)}%)
-                        </span>
-                      )}
-                    </div>
-                    <div className="group-card-cta">ดูกราฟเปรียบเทียบ →</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section id="explore" className="section">
-              <div className="section-head">
-                <span className="section-num">02</span>
-                <div>
-                  <h2>แนวโน้มและการเปรียบเทียบรายตัวชี้วัด</h2>
-                  <p className="section-sub">เลือกกลุ่มและมุมมองจากแถบด้านบน แล้วเลือกตัวชี้วัดด้านล่างเพื่อสำรวจข้อมูล — กราฟและตารางจะอัปเดตตามตัวชี้วัดที่เลือก</p>
-                </div>
-              </div>
-              <div className="indicator-filter-bar">
-                <span className="flabel">ตัวชี้วัด</span>
-                <select className="indicator-select" value={indicator} onChange={e => setIndicator(e.target.value)}>
-                  {INDICATOR_ORDER.map(ind => <option key={ind} value={ind}>{INDICATOR_LABELS[ind]}</option>)}
-                </select>
-                <span className="indicator-filter-hint">↓ กราฟและตารางด้านล่างจะเปลี่ยนตามตัวชี้วัดนี้</span>
-              </div>
-              <div className="chart-grid">
-                <div className="chart-card">
-                  <div className="chart-card-head">
-                    <div>
-                      <h3>{INDICATOR_LABELS[indicator]} — {GROUP_LABELS[group]}</h3>
-                      <p className="chart-sub">{mode === "rank" ? "อันดับ (ยิ่งน้อยยิ่งดี)" : chartUnit.trim()}</p>
-                    </div>
-                  </div>
-                  <div className="chart-body" ref={trendRef}></div>
-                  <div className="legend">
-                    {countries.map(c => (
-                      <div className="legend-item" key={c}><span className="legend-swatch" style={{ background: COUNTRY_COLORS[c] || "#999" }} />{c}</div>
-                    ))}
-                  </div>
-                </div>
-                <div className="chart-card">
-                  <div className="chart-card-head">
-                    <div>
-                      <h3>เปรียบเทียบปีล่าสุดที่มีข้อมูล</h3>
-                      <p className="chart-sub"></p>
-                    </div>
-                  </div>
-                  <div className="chart-body chart-body--bar" ref={barRef}></div>
-                </div>
-              </div>
-            </section>
-
-            <section id="table" className="section">
-              <div className="section-head">
-                <span className="section-num">03</span>
-                <div>
-                  <h2>ตารางข้อมูลดิบ</h2>
-                  <p className="section-sub">ค่าตามตัวชี้วัดที่เลือกในส่วนที่ 02 และกลุ่ม/มุมมองที่เลือกไว้ด้านบน</p>
-                </div>
-              </div>
-              <div className="chart-card">
-                <div className="chart-card-head">
-                  <div>
-                    <h3>ตารางข้อมูล</h3>
-                    <p className="chart-sub">แถวที่ไฮไลต์คือประเทศไทย</p>
-                  </div>
-                  <button className="ghost-btn" onClick={() => setTableOpen(o => !o)}>{tableOpen ? "ซ่อนตาราง" : "แสดงตาราง"}</button>
-                </div>
-                {tableOpen && (
-                  <>
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>ประเทศ</th>
-                            {tableYears.map(y => <th key={y}>{y}</th>)}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {countries.map(c => {
-                            const rec = getIndicatorRecord(group, mode, c, indicator);
-                            const dec = mode === "rank" ? 0 : unitDecimals(rec ? rec.unit : "");
-                            return (
-                              <tr key={c} className={c === "Thailand" ? "row-thailand" : ""}>
-                                <td>{c}</td>
-                                {tableYears.map(y => <td key={y}>{rec && rec.data[y] !== undefined ? fmtNumber(rec.data[y], dec) : "–"}</td>)}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    <p className="table-note">ค่าว่าง (–) หมายถึงไม่มีข้อมูลรายงานในปีนั้น</p>
-                  </>
-                )}
-              </div>
-            </section>
-
-            <section id="insight" className="section">
-              <div className="section-head">
-                <span className="section-num">04</span>
-                <div>
-                  <h2>ข้อสังเกตเชิงเปรียบเทียบ</h2>
-                  <p className="section-sub">สรุปประเด็นสำคัญจากข้อมูลค่าใช้จ่ายและบุคลากร R&amp;D ของไทย (ไม่เปลี่ยนตามตัวชี้วัดที่เลือกด้านบน)</p>
-                </div>
-              </div>
-              <div className="note-grid">
-                {notes.map((n, i) => (
-                  <div className="note-card" style={{ "--accent": n.accent }} key={i}>
-                    <h4>{n.title}</h4>
-                    <p>{n.body}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
+            {page === "indicators" && (
+              <IndicatorsPage
+                kpiCards={kpiCards} insightHTML={insightHTML} groupCardsData={groupCardsData}
+                setGroup={setGroup} indicator={indicator} setIndicator={setIndicator}
+                trendRef={trendRef} barRef={barRef} countries={countries} group={group} mode={mode}
+                chartUnit={chartUnit} tableOpen={tableOpen} setTableOpen={setTableOpen}
+                tableYears={tableYears} notes={indicatorNotes}
+              />
+            )}
+            {page === "private" && <PrivatePage refs={{ privTrendRef, privIndustryRef, privDonutRef, privObstacleRef, privCollabRef, privResearchTypeRef, privFieldRef, privNationalRef }} notes={privateNotes} />}
+            {page === "public" && <PublicPage refs={{ pubInstRef, pubFunderRef, pubTypeRef, pubFieldRef, pubThesisUniRef, pubThesisFieldRef, pubThesisDonutRef, pubProjTrendRef, pubThesisTrendRef }} notes={publicNotes} />}
 
             <footer className="page-footer">
-              <p>ที่มาข้อมูล: IMD World Competitiveness Online 1995–2026</p>
+              <p>ที่มาข้อมูล: {page === "indicators" ? "IMD World Competitiveness Online 1995–2026" : page === "private" ? PRIVATE_DATA.sourceLabel : PUBLIC_DATA.sourceLabel}</p>
             </footer>
           </main>
         </div>
       </div>
     </>
+  );
+}
+
+/* ============================================================
+   PRIVATE SECTOR PAGE
+   ============================================================ */
+function PrivatePage({ refs, notes }) {
+  const { privTrendRef, privIndustryRef, privDonutRef, privObstacleRef, privCollabRef, privResearchTypeRef, privFieldRef, privNationalRef } = refs;
+  const K = PRIVATE_DATA.kpis;
+  const kpiCards = [
+    { icon: "🏢", value: fmtInt(K.companiesSurveyed), label: "จำนวนบริษัท" },
+    { icon: "🥧", value: fmtPct1(K.pctDoingRD), label: "บริษัทที่ทำ R&D" },
+    { icon: "👥", value: fmtInt(K.fteResearchPersonnel), label: "Researchers FTE (คน-ปี)" },
+    { icon: "🗄️", value: fmtBn(K.rdValueLatestBn), label: "มูลค่า R&D ปี 2567 (พันล้านบาท)" },
+    { icon: "📈", value: fmtBn(K.forecastRdBn), label: "ประมาณการ R&D ปี 2568 (พันล้านบาท)" },
+    { icon: "🎯", value: fmtPct1(K.rdGdpTargetAchievementPct), label: "R&D/GDP" },
+    { icon: "📊", value: fmtPct1(K.innovationActivePct), label: "สัดส่วนบริษัทที่มี innovation" },
+    { icon: "🧮", value: fmtPct1(K.ipActivePct), label: "IP Activity" }
+  ];
+
+  return (
+    <div className="pbi-page">
+      <section id="p-overview">
+        <div className="pbi-header">
+          <div>
+            <p className="pbi-header-title">National R&amp;D Monitoring Dashboard | ภาคเอกชน</p>
+            <p className="pbi-header-sub">ผลสำรวจการวิจัยและพัฒนาภาคเอกชน ประจำปี 2568 (ข้อมูลปี 2567)</p>
+          </div>
+        </div>
+
+        <div className="pbi-kpi-strip">
+          {kpiCards.map((c, i) => (
+            <div className="pbi-kpi-item" key={i}>
+              <span className="pbi-kpi-icon">{c.icon}</span>
+              <div className="pbi-kpi-value">{c.value}</div>
+              <div className="pbi-kpi-label">{c.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="p-trend">
+        <h3 className="pbi-section-title">แนวโน้มหลายปี</h3>
+        <div className="pbi-panel pbi-panel--full pbi-panel--hero" style={{ marginBottom: 18 }}>
+          <div className="pbi-panel-head">
+            <span>R&amp;D Trend: 2563–2567 and Forecast 2568</span>
+          </div>
+          <div className="pbi-panel-body pbi-panel-body--hero" ref={privTrendRef}></div>
+          <p className="pbi-panel-note">2563–2567 เป็นข้อมูลจริง (Actual) · 2568F เป็นค่าเป้าหมาย/ประมาณการ (Forecast) ตามตารางข้อมูลที่ระบุ — ยังไม่มีค่า R&amp;D/GDP Target Achievement สำหรับปี 2568F</p>
+        </div>
+
+        <div className="pbi-panel pbi-panel--full pbi-panel--hero">
+          <div className="pbi-panel-head">
+            <span>ค่าใช้จ่าย R&amp;D ระดับประเทศ แยกภาคเอกชน/ภาครัฐ</span>
+            <span className="pbi-panel-head-sub">ปี 2558–2567 · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+          </div>
+          <div className="pbi-panel-body pbi-panel-body--hero" ref={privNationalRef}></div>
+          <div className="pbi-insight">
+            <span className="pbi-insight-icon">💡</span>
+            <span>ภาคเอกชนเป็นสัดส่วนหลักของ R&amp;D ประเทศไทยมาตลอด (<b>~65–75%</b>) โดยปี 2567 อยู่ที่ <b>69.1%</b> ส่วน R&amp;D รวมประเทศต่อ GDP ปี 2567 อยู่ที่ <b>1.07%</b></span>
+          </div>
+        </div>
+      </section>
+
+      <section id="p-current">
+        <h3 className="pbi-section-title">ข้อมูลปี 2567 (ปีล่าสุด)</h3>
+        <div className="pbi-panel pbi-panel--full pbi-panel--hero" style={{ marginBottom: 18 }}>
+          <div className="pbi-panel-head">
+            <span>ภาพรวมบุคลากรด้าน R&amp;D</span>
+            <span className="pbi-panel-head-sub">FTE ปี 2567 · ชี้ที่ชิ้นวงกลม/รายการเพื่อดูสัดส่วนเพศ</span>
+          </div>
+          <div className="pbi-panel-body pbi-panel-body--hero" ref={privDonutRef}></div>
+        </div>
+
+        <div className="pbi-grid-hero" style={{ marginBottom: 18 }}>
+          <div className="pbi-panel pbi-panel--hero">
+            <div className="pbi-panel-head">
+              <span>R&amp;D Expenditure by Industry</span>
+              <span className="pbi-panel-head-sub">Billion Baht · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+            </div>
+            <div className="pbi-panel-body pbi-panel-body--hero" ref={privIndustryRef}></div>
+          </div>
+          <div className="pbi-panel pbi-panel--compact">
+            <div className="pbi-panel-head">
+              <span>ค่าใช้จ่าย R&amp;D เอกชน ตามประเภทการวิจัย</span>
+              <span className="pbi-panel-head-sub">ชี้เพื่อดูรายละเอียด</span>
+            </div>
+            <div className="pbi-panel-body pbi-panel-body--compact" ref={privResearchTypeRef}></div>
+          </div>
+        </div>
+
+        <div className="pbi-panel pbi-panel--full pbi-panel--compact" style={{ marginBottom: 18 }}>
+          <div className="pbi-panel-head">
+            <span>ค่าใช้จ่าย R&amp;D เอกชน ตามสาขาการวิจัย</span>
+            <span className="pbi-panel-head-sub">ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+          </div>
+          <div className="pbi-panel-body pbi-panel-body--compact" ref={privFieldRef}></div>
+        </div>
+
+        <div className="pbi-grid-2x2">
+          <div className="pbi-panel">
+            <div className="pbi-panel-head">
+              <span>อุปสรรคหลักต่อการทำ R&amp;D และนวัตกรรม</span>
+              <span className="pbi-panel-head-sub">Top 6 · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+            </div>
+            <div className="pbi-panel-body" ref={privObstacleRef}></div>
+          </div>
+          <div className="pbi-panel">
+            <div className="pbi-panel-head">
+              <span>Top Collaboration Partners</span>
+              <span className="pbi-panel-head-sub">Top 6 · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+            </div>
+            <div className="pbi-panel-body" ref={privCollabRef}></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="p-insight">
+        <h3 className="pbi-section-title">ข้อสังเกตเชิงเปรียบเทียบ</h3>
+        <div className="note-grid">
+          {notes.map((n, i) => (
+            <div className="note-card" style={{ "--accent": n.accent }} key={i}>
+              <h4>{n.title}</h4>
+              <p>{n.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ============================================================
+   PUBLIC SECTOR PAGE
+   ============================================================ */
+function PublicPage({ refs, notes }) {
+  const { pubInstRef, pubFunderRef, pubTypeRef, pubFieldRef, pubThesisUniRef, pubThesisFieldRef, pubThesisDonutRef, pubProjTrendRef, pubThesisTrendRef } = refs;
+  const P = PUBLIC_DATA.projects, T = PUBLIC_DATA.thesis;
+
+  const kpiCards = [
+    { icon: "📁", value: fmtInt(P.totalProjects), label: "โครงการวิจัยภาครัฐ (ปีงบ 2567)" },
+    { icon: "💰", value: fmtBn(P.budgetAllocatedBn), label: "งบจัดสรร (พันล้านบาท)" },
+    { icon: "💸", value: fmtBn(P.totalBudgetBn), label: "งบเบิกจ่ายจริง (พันล้านบาท)" },
+    { icon: "📊", value: fmtPct1(P.budgetUtilizationPct), label: "อัตราเบิกจ่ายจริง/งบจัดสรร (สิ้นปีงบ 2567)" },
+    { icon: "🏛️", value: fmtInt(P.uniqueInstitutions), label: "หน่วยงานที่ดำเนินการวิจัย" },
+    { icon: "🎓", value: fmtInt(T.totalThesis), label: "วิทยานิพนธ์ (ปีการศึกษา 2566)" }
+  ];
+
+  return (
+    <div className="pbi-page">
+      <section id="g-overview">
+        <div className="pbi-header">
+          <div>
+            <p className="pbi-header-title">National R&amp;D Monitoring Dashboard | ภาครัฐและสถาบันอุดมศึกษา</p>
+            <p className="pbi-header-sub">โครงการวิจัยปีงบประมาณ 2567 · วิทยานิพนธ์ปีการศึกษา 2566</p>
+          </div>
+        </div>
+
+        <div className="pbi-kpi-strip">
+          {kpiCards.map((c, i) => (
+            <div className="pbi-kpi-item" key={i}>
+              <span className="pbi-kpi-icon">{c.icon}</span>
+              <div className="pbi-kpi-value">{c.value}</div>
+              <div className="pbi-kpi-label">{c.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="g-trend">
+        <h3 className="pbi-section-title">จำนวนโครงการเพิ่มขึ้น แต่งบเบิกจ่ายต่อโครงการลดลง</h3>
+        <p style={{ margin: "-6px 0 8px", fontSize: 12.5, color: "var(--text-mid)" }}>เปรียบเทียบข้อมูลปีงบประมาณ 2566 และ 2567</p>
+        <div className="pbi-insight" style={{ marginBottom: 16 }}>
+          <span className="pbi-insight-icon">ℹ️</span>
+          <span style={{ fontSize: 12, color: "var(--text-mid)" }}>
+            กราฟด้านล่างใช้ <b>คนละระบบปี</b>: โครงการวิจัย/งบประมาณ นับตาม <b>ปีงบประมาณ</b> (ต.ค.–ก.ย.) ส่วนวิทยานิพนธ์นับตาม <b>ปีการศึกษา</b> (มิ.ย.–พ.ค.) ซึ่งเป็นปฏิทินคนละแบบตามระบบราชการ/การศึกษาไทย และแต่ละชุดข้อมูลก็มาจากคนละหน่วยงาน จึงมีปีล่าสุดที่รายงานไม่ตรงกัน (ปีงบ 2567 vs ปีการศึกษา 2566) — ไม่ใช่ความผิดพลาดของข้อมูล
+          </span>
+        </div>
+
+        <div className="pbi-delta-row">
+          <div className="pbi-delta-card" style={{ "--accent": "#3F6FBF", "--accent-dim": "#EAF0FB" }}>
+            <div className="pbi-delta-icon">📄</div>
+            <div className="pbi-delta-label">จำนวนโครงการวิจัย</div>
+            <div className="pbi-delta-value">32,946<span className="pbi-delta-sub" style={{ marginLeft: 6 }}>โครงการ (ปี 2567)</span></div>
+            <div className="pbi-delta-change pbi-delta-change--up">▲ +33.2%</div>
+            <div className="pbi-delta-compare">จาก 24,729 โครงการ (ปี 2566)</div>
+          </div>
+          <div className="pbi-delta-card" style={{ "--accent": "#C0392B", "--accent-dim": "#FBEAEA" }}>
+            <div className="pbi-delta-icon">💰</div>
+            <div className="pbi-delta-label">งบประมาณเบิกจ่าย</div>
+            <div className="pbi-delta-value">37.49<span className="pbi-delta-sub" style={{ marginLeft: 6 }}>พันล้านบาท (ปี 2567)</span></div>
+            <div className="pbi-delta-change pbi-delta-change--down">▼ -13.1%</div>
+            <div className="pbi-delta-compare">จาก 43.15 พันล้านบาท (ปี 2566)</div>
+          </div>
+          <div className="pbi-delta-card" style={{ "--accent": "#E2A33D", "--accent-dim": "#FBF2E2" }}>
+            <div className="pbi-delta-icon">📉</div>
+            <div className="pbi-delta-label">งบเบิกจ่ายเฉลี่ยต่อโครงการ</div>
+            <div className="pbi-delta-value">1.14<span className="pbi-delta-sub" style={{ marginLeft: 6 }}>ล้านบาท/โครงการ (ปี 2567)</span></div>
+            <div className="pbi-delta-change pbi-delta-change--down">▼ -34.8%</div>
+            <div className="pbi-delta-compare">จาก 1.75 ล้านบาท/โครงการ (ปี 2566)</div>
+          </div>
+        </div>
+
+        <div className="pbi-panel pbi-panel--full pbi-panel--hero">
+          <div className="pbi-panel-head">
+            <span>จำนวนโครงการวิจัย และงบประมาณเบิกจ่าย</span>
+            <span className="pbi-panel-head-sub">ปีงบประมาณ 2566 เทียบ 2567</span>
+          </div>
+          <div className="pbi-panel-body pbi-panel-body--hero" ref={pubProjTrendRef}></div>
+          <div className="pbi-insight-row">
+            <div className="pbi-insight">
+              <span className="pbi-insight-icon">💡</span>
+              <span>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--pbi-navy)" }}>โครงการเพิ่ม 33.2% แต่งบเบิกจ่ายลด 13.1%</div>
+                <div style={{ fontSize: 12, color: "var(--text-mid)", marginTop: 3 }}>24,729 → 32,946 โครงการ &nbsp;|&nbsp; 43.15 → 37.49 พันล้านบาท &nbsp;|&nbsp; งบเฉลี่ยต่อโครงการลดลง <b>34.8%</b></div>
+              </span>
+            </div>
+            <div className="pbi-watchlist">
+              <div className="pbi-watchlist-title">สิ่งที่ควรติดตาม</div>
+              <ul>
+                <li>งบตกไป/ค้างเบิกเหลื่อมปี 16.59 พันล้านบาท (30.7% ของงบจัดสรร) — สิ้นปีงบ 2567 แล้ว</li>
+                <li>สาเหตุที่งบเบิกจ่ายลดลง แม้จำนวนโครงการเพิ่มขึ้น</li>
+                <li>ประสิทธิภาพการเบิกจ่ายรายหน่วยงานและสาขาการวิจัย</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="pbi-panel pbi-panel--full" style={{ marginTop: 18 }}>
+          <div className="pbi-panel-head">
+            <span>วิทยานิพนธ์ ปริญญาโท vs ปริญญาเอก</span>
+            <span className="pbi-panel-head-sub">ปีการศึกษา 2565–2566 · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+          </div>
+          <div className="pbi-panel-body" ref={pubThesisTrendRef}></div>
+          <div className="pbi-insight"><span className="pbi-insight-icon">💡</span><span>ปริญญาโท <b>+1.7%</b> (15,933 → 16,197 เรื่อง) ขณะที่ปริญญาเอกโต <b>+30.2%</b> (3,599 → 4,686 เรื่อง) เร็วกว่าชัดเจน</span></div>
+        </div>
+      </section>
+
+      <section id="g-current">
+        <h3 className="pbi-section-title">โครงสร้างระบบวิจัยปีล่าสุด</h3>
+        <div className="pbi-panel pbi-panel--full pbi-panel--hero" style={{ marginBottom: 18 }}>
+          <div className="pbi-panel-head">
+            <span>หน่วยงานที่มีจำนวนโครงการวิจัยสูงสุด</span>
+            <span className="pbi-panel-head-sub">Top 6 จาก 1,522 หน่วยงาน</span>
+          </div>
+          <div className="pbi-panel-body pbi-panel-body--hero" ref={pubInstRef}></div>
+        </div>
+
+        <div className="pbi-grid-2x2">
+          <div className="pbi-panel">
+            <div className="pbi-panel-head">
+              <span>แหล่งทุนวิจัยสูงสุดตามงบประมาณ</span>
+              <span className="pbi-panel-head-sub">ล้านบาท · Top 6 · ชี้ที่แท่งดูชื่อเต็ม</span>
+            </div>
+            <div className="pbi-panel-body" ref={pubFunderRef}></div>
+          </div>
+          <div className="pbi-panel">
+            <div className="pbi-panel-head">
+              <span>โครงการวิจัยแยกตามประเภทการวิจัย</span>
+              <span className="pbi-panel-head-sub">ชี้ที่แท่งดูงบประมาณ</span>
+            </div>
+            <div className="pbi-panel-body" ref={pubTypeRef}></div>
+            <p className="pbi-panel-note">{P.researchTypeNote}</p>
+          </div>
+        </div>
+
+        <div className="pbi-panel pbi-panel--full pbi-panel--compact" style={{ marginBottom: 18 }}>
+          <div className="pbi-panel-head">
+            <span>โครงการวิจัยแยกตามสาขาการวิจัยหลัก</span>
+            <span className="pbi-panel-head-sub">ชี้ที่แท่งดูงบประมาณ</span>
+          </div>
+          <div className="pbi-panel-body pbi-panel-body--compact" ref={pubFieldRef}></div>
+          <p className="pbi-panel-note">{P.fieldNote}</p>
+        </div>
+
+        <h3 className="pbi-section-title">วิทยานิพนธ์ระดับบัณฑิตศึกษา ปีการศึกษา 2566</h3>
+        <p style={{ margin: "-6px 0 16px", fontSize: 12.5, color: "var(--text-mid)" }}>
+          "วิทยานิพนธ์" คือผลงานวิจัยของนักศึกษาระดับปริญญาโท/เอกในมหาวิทยาลัย ซึ่งนับเป็นผลผลิตด้าน R&amp;D ของภาครัฐอีกช่องทางหนึ่ง นอกเหนือจากโครงการวิจัยของอาจารย์/นักวิจัยโดยตรง
+        </p>
+        <div className="pbi-panel pbi-panel--full pbi-panel--compact" style={{ marginBottom: 18 }}>
+          <div className="pbi-panel-head">
+            <span>วิทยานิพนธ์แยกตามระดับ</span>
+          </div>
+          <div className="pbi-panel-body pbi-panel-body--compact" ref={pubThesisDonutRef}></div>
+        </div>
+        <div className="pbi-grid-2x2">
+          <div className="pbi-panel pbi-panel--compact">
+            <div className="pbi-panel-head">
+              <span>มหาวิทยาลัยที่มีวิทยานิพนธ์สูงสุด</span>
+              <span className="pbi-panel-head-sub">Top 6</span>
+            </div>
+            <div className="pbi-panel-body pbi-panel-body--compact" ref={pubThesisUniRef}></div>
+          </div>
+          <div className="pbi-panel pbi-panel--compact">
+            <div className="pbi-panel-head">
+              <span>สาขาวิชาที่มีวิทยานิพนธ์สูงสุด</span>
+              <span className="pbi-panel-head-sub">Top 6</span>
+            </div>
+            <div className="pbi-panel-body pbi-panel-body--compact" ref={pubThesisFieldRef}></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="g-insight">
+        <h3 className="pbi-section-title">ข้อสังเกตเชิงเปรียบเทียบ</h3>
+        <div className="note-grid">
+          {notes.map((n, i) => (
+            <div className="note-card" style={{ "--accent": n.accent }} key={i}>
+              <h4>{n.title}</h4>
+              <p>{n.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ============================================================
+   INDICATORS (10 ตัวชี้วัด) PAGE — original IMD WCY dashboard
+   ============================================================ */
+function IndicatorsPage({
+  kpiCards, insightHTML, groupCardsData, setGroup, indicator, setIndicator,
+  trendRef, barRef, countries, group, mode, chartUnit, tableOpen, setTableOpen, tableYears, notes
+}) {
+  return (
+    <div className="pbi-page">
+      <section id="overview">
+        <div className="pbi-header">
+          <div>
+            <p className="pbi-header-title">National R&amp;D Monitoring Dashboard | ดัชนี 10 ตัว (IMD)</p>
+            <p className="pbi-header-sub">IMD World Competitiveness Yearbook 2569 · เทียบไทยกับกลุ่ม BRICS, Tier สูงกว่า และอาเซียน ปี 1995–2024</p>
+          </div>
+        </div>
+
+        <div className="pbi-kpi-strip">
+          {kpiCards.map((c, i) => (
+            <div className="pbi-kpi-item" key={i}>
+              <span className="pbi-kpi-icon">{c.icon}</span>
+              <div className="pbi-kpi-value">{c.value}<small style={{ fontSize: 11, fontWeight: 500, marginLeft: 3 }}>{c.unit}</small></div>
+              <div className="pbi-kpi-label">{c.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="pbi-insight">
+          <span className="pbi-insight-icon">💡</span>
+          <span dangerouslySetInnerHTML={{ __html: insightHTML }} />
+        </div>
+      </section>
+
+      <section id="groups">
+        <h3 className="pbi-section-title">ไทยเทียบกับ 3 กลุ่มประเทศ</h3>
+        <p style={{ margin: "-6px 0 16px", fontSize: 12.5, color: "var(--text-mid)" }}>ผลต่างค่าใช้จ่าย R&amp;D ต่อ GDP ของไทย เทียบค่าเฉลี่ยแต่ละกลุ่ม (ปีล่าสุดที่มีข้อมูล) — คลิกการ์ดเพื่อดูกราฟเปรียบเทียบ</p>
+        <div className="pbi-grid-hero" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          {groupCardsData.map(gc => (
+            <div
+              className="pbi-panel"
+              key={gc.group}
+              style={{ cursor: "pointer" }}
+              onClick={() => {
+                setGroup(gc.group);
+                document.getElementById("explore").scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
+              <div className="pbi-panel-head">
+                <span>{GROUP_LABELS[gc.group]}</span>
+                <span className="pbi-panel-head-sub">{gc.count} ประเทศ</span>
+              </div>
+              <div style={{ padding: "16px 18px" }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 26, fontWeight: 700, color: "var(--pbi-navy)" }}>
+                  {gc.thVal ? fmtNumber(gc.thVal.value, 2) : "–"}<small style={{ fontSize: 12, fontWeight: 500 }}>% (ไทย, {gc.thVal ? gc.thVal.year : "-"})</small>
+                </div>
+                {gc.diff !== null && (
+                  <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 600, color: gc.isUp ? "#2E7D4F" : "#B3403A" }}>
+                    {gc.isUp ? "▲" : "▼"} {fmtNumber(Math.abs(gc.diff), 2)} จุด {gc.isUp ? "สูงกว่า" : "ต่ำกว่า"}ค่าเฉลี่ยกลุ่ม ({fmtNumber(gc.avg, 2)}%)
+                  </div>
+                )}
+                <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--text-dim)" }}>ดูกราฟเปรียบเทียบ →</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="explore">
+        <h3 className="pbi-section-title">แนวโน้มและการเปรียบเทียบรายตัวชี้วัด</h3>
+        <div className="indicator-filter-bar">
+          <span className="flabel">ตัวชี้วัด</span>
+          <select className="indicator-select" value={indicator} onChange={e => setIndicator(e.target.value)}>
+            {INDICATOR_ORDER.map(ind => <option key={ind} value={ind}>{INDICATOR_LABELS[ind]}</option>)}
+          </select>
+          <span className="indicator-filter-hint">↓ กราฟและตารางด้านล่างจะเปลี่ยนตามตัวชี้วัดนี้</span>
+        </div>
+        <div className="pbi-grid-hero">
+          <div className="pbi-panel pbi-panel--hero">
+            <div className="pbi-panel-head">
+              <span>{INDICATOR_LABELS[indicator]} — {GROUP_LABELS[group]}</span>
+              <span className="pbi-panel-head-sub">{mode === "rank" ? "อันดับ (ยิ่งน้อยยิ่งดี)" : chartUnit.trim()}</span>
+            </div>
+            <div className="pbi-panel-body pbi-panel-body--hero" ref={trendRef}></div>
+            <div className="legend" style={{ padding: "0 16px 14px" }}>
+              {countries.map(c => (
+                <div className="legend-item" key={c}><span className="legend-swatch" style={{ background: COUNTRY_COLORS[c] || "#999" }} />{c}</div>
+              ))}
+            </div>
+          </div>
+          <div className="pbi-panel pbi-panel--compact">
+            <div className="pbi-panel-head">
+              <span>เปรียบเทียบปีล่าสุดที่มีข้อมูล</span>
+            </div>
+            <div className="pbi-panel-body pbi-panel-body--compact" ref={barRef}></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="table">
+        <h3 className="pbi-section-title">ตารางข้อมูลดิบ</h3>
+        <div className="pbi-panel">
+          <div className="pbi-panel-head">
+            <span>ตารางข้อมูล</span>
+            <span className="pbi-panel-head-sub">แถวที่ไฮไลต์คือประเทศไทย</span>
+          </div>
+          <div style={{ padding: "14px 16px 16px" }}>
+            <button className="ghost-btn" onClick={() => setTableOpen(o => !o)}>{tableOpen ? "ซ่อนตาราง" : "แสดงตาราง"}</button>
+            {tableOpen && (
+              <>
+                <div className="table-wrap" style={{ marginTop: 12 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ประเทศ</th>
+                        {tableYears.map(y => <th key={y}>{y}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {countries.map(c => {
+                        const rec = getIndicatorRecord(group, mode, c, indicator);
+                        const dec = mode === "rank" ? 0 : unitDecimals(rec ? rec.unit : "");
+                        return (
+                          <tr key={c} className={c === "Thailand" ? "row-thailand" : ""}>
+                            <td>{c}</td>
+                            {tableYears.map(y => <td key={y}>{rec && rec.data[y] !== undefined ? fmtNumber(rec.data[y], dec) : "–"}</td>)}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="table-note">ค่าว่าง (–) หมายถึงไม่มีข้อมูลรายงานในปีนั้น</p>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section id="insight">
+        <h3 className="pbi-section-title">ข้อสังเกตเชิงเปรียบเทียบ</h3>
+        <div className="note-grid">
+          {notes.map((n, i) => (
+            <div className="note-card" style={{ "--accent": n.accent }} key={i}>
+              <h4>{n.title}</h4>
+              <p>{n.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
