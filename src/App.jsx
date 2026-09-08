@@ -2058,7 +2058,23 @@ button:focus-visible, select:focus-visible, a:focus-visible{
 .pbi-watchlist-title{font-weight:700; font-size:12px; color:var(--pbi-navy); margin-bottom:8px; text-transform:uppercase; letter-spacing:.02em;}
 .pbi-watchlist ul{margin:0; padding-left:18px;}
 .pbi-watchlist li{margin-bottom:5px; line-height:1.5;}
-.pbi-insight-row{display:grid; grid-template-columns:1.6fr 1fr; gap:16px; margin-top:18px;}
+.pbi-insight-row{display:grid; grid-template-columns:1.6fr 1fr; gap:16px; margin-top:18px; align-items:stretch;}
+.pbi-insight-row .pbi-insight{
+  margin:0;
+  height:100%;
+  box-sizing:border-box;
+  padding:14px 16px;
+  align-items:center;
+}
+.pbi-insight-row .pbi-watchlist{
+  margin:0;
+  height:100%;
+  box-sizing:border-box;
+  padding:14px 16px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
 @media (max-width:900px){.pbi-insight-row{grid-template-columns:1fr;}}
 .pbi-insight-donut-row{display:grid; grid-template-columns:280px 1fr; gap:16px; margin-bottom:4px;}
 @media (max-width:820px){.pbi-insight-donut-row{grid-template-columns:1fr;}}
@@ -2598,7 +2614,7 @@ export default function App() {
             <div className="foot-label">ที่มาข้อมูล</div>
             <div className="foot-value">
               {page === "indicators" && <>IMD World Competitiveness<br />Online 1995–2026</>}
-              {page === "private" && <>ผลสำรวจ R&amp;D ภาคเอกชน<br />ปี 2567 (ข้อมูลปี 2566)</>}
+              {page === "private" && <>ผลสำรวจ R&amp;D ภาคเอกชน<br />ปี 2568 (ข้อมูลปี 2567)</>}
               {page === "public" && <>ฐานข้อมูลโครงการวิจัยภาครัฐ<br />ปีงบประมาณ 2567</>}
             </div>
           </div>
