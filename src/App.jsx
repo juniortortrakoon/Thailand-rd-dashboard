@@ -1023,11 +1023,137 @@ const PRIVATE_DATA = {
     { role: "ช่างเทคนิค/ผู้ช่วยนักวิจัย", male: 15217, female: 6369 },
     { role: "ผู้ทำงานสนับสนุน", male: 3049, female: 2902 }
   ],
+  // Personnel by degree level + gender (FTE, "Blow" population-estimate) —
+  // only years 2566–2568 have this breakdown; the "Summary" sheet that
+  // carries it doesn't exist in the older survey files.
+  personnelDetailByYear: {
+    // 2563 only has degree data for ~40% of researchers in the raw file;
+    // these values are that subset's proportion applied to the trusted
+    // FTE totals — an estimate, not a reconciled figure like other years.
+    "2563": [
+      { role: "นักวิจัย ปริญญาตรี", male: 47499.9, female: 51680.9 },
+      { role: "นักวิจัย ปริญญาโท", male: 5454.1, female: 9218.8 },
+      { role: "ช่างเทคนิค/ผู้ช่วยนักวิจัย", male: 14512.3, female: 10272.7 },
+      { role: "ผู้ทำงานสนับสนุน", male: 2303.0, female: 2084.0 },
+      { role: "นักวิจัย ปริญญาเอก", male: 1146.3, female: 543.0 }
+    ],
+    "2564": [
+      { role: "นักวิจัย ปริญญาตรี", male: 43589.3, female: 46363.7 },
+      { role: "นักวิจัย ปริญญาโท", male: 7653.5, female: 8251.5 },
+      { role: "ช่างเทคนิค/ผู้ช่วยนักวิจัย", male: 5322.8, female: 3866.2 },
+      { role: "ผู้ทำงานสนับสนุน", male: 1336.8, female: 883.6 },
+      { role: "นักวิจัย ปริญญาเอก", male: 1076.3, female: 920.8 }
+    ],
+    "2565": [
+      { role: "นักวิจัย ปริญญาตรี", male: 20600.7, female: 21135.5 },
+      { role: "นักวิจัย ปริญญาโท", male: 16592.4, female: 17582.2 },
+      { role: "ช่างเทคนิค/ผู้ช่วยนักวิจัย", male: 8333.9, female: 9307.0 },
+      { role: "ผู้ทำงานสนับสนุน", male: 6109.8, female: 5696.7 },
+      { role: "นักวิจัย ปริญญาเอก", male: 7440.2, female: 2129.0 }
+    ],
+    "2566": [
+      { role: "นักวิจัย ปริญญาตรี", male: 28664.300, female: 25482.992 },
+      { role: "นักวิจัย ปริญญาโท", male: 20827.284, female: 16313.621 },
+      { role: "ช่างเทคนิค/ผู้ช่วยนักวิจัย", male: 5764.498, female: 6688.387 },
+      { role: "ผู้ทำงานสนับสนุน", male: 3947.164, female: 4495.332 },
+      { role: "นักวิจัย ปริญญาเอก", male: 1821.945, female: 577.822 }
+    ],
+    "2567": [
+      { role: "นักวิจัย ปริญญาตรี", male: 26486.828, female: 25420.998 },
+      { role: "นักวิจัย ปริญญาโท", male: 10841.257, female: 12401.031 },
+      { role: "ช่างเทคนิค/ผู้ช่วยนักวิจัย", male: 8874.742, female: 7156.111 },
+      { role: "ผู้ทำงานสนับสนุน", male: 5778.720, female: 4001.634 },
+      { role: "นักวิจัย ปริญญาเอก", male: 793.106, female: 812.409 }
+    ],
+    "2568": [
+      { role: "นักวิจัย ปริญญาตรี", male: 40352, female: 31362 },
+      { role: "ช่างเทคนิค/ผู้ช่วยนักวิจัย", male: 15217, female: 6369 },
+      { role: "นักวิจัย ปริญญาโท", male: 8882, female: 6962 },
+      { role: "ผู้ทำงานสนับสนุน", male: 3049, female: 2902 },
+      { role: "นักวิจัย ปริญญาเอก", male: 995, female: 472 }
+    ]
+  },
   nationalTrend: {
     years: ["2558", "2559", "2560", "2561", "2562", "2563", "2564", "2565", "2566", "2567"],
     privateBn: [59.44256, 82.70123, 123.94204, 142.97224, 149.244, 141.70551, 144.887, 146.320, 112.12555, 137.446],
     publicBn: [25.229, 30.826, 31.201, 34.000, 43.828, 44.000, 50.683, 55.093, 55.980, 61.613],
     gdpPct: [0.62, 0.79, 1.00, 1.08, 1.14, 1.19, 1.21, 1.16, 0.94, 1.07]
+  },
+  // Per-year filterable snapshot (population-extrapolated methodology, from T01).
+  // Note: differs in definition from the sample-survey-based headline KPIs
+  // above (5,745 companies / 51.2%), which use the "Rept-NonRept" sheet's
+  // raw respondent counts for the latest year only — kept separate on
+  // purpose since the two methodologies aren't directly comparable.
+  yearlyFilter: {
+    years: ["2563", "2564", "2565", "2566", "2567", "2568"],
+    // Survey-respondent counts (same methodology/sheet as the "5,745
+    // บริษัท / 51.2%" headline KPI, just pulled per-year instead of only
+    // the latest year) — replaces the earlier population-extrapolated
+    // (T01) figures so this section is directly comparable to the KPI
+    // strip above it. 2563 lacks the "R&D-doing" column in its own sheet;
+    // that count comes from tallying the "Have R&D" flag in its raw data
+    // instead, which reconciles closely with the sheet's respondent total.
+    totalEnterprises: [5354, 5212, 5554, 5080, 5557, 5745],
+    rdEnterprises: [2547, 1998, 2448, 1872, 2491, 2941],
+    pctRD: [47.58, 38.34, 44.08, 36.85, 44.83, 51.20],
+    rdValueBn: [149.244, 141.706, 144.887, 146.320, 112.126, 137.446],
+    industryBn: {
+      manufacturing: [89.143, 86.411, 67.809, 76.996, 54.487, 64.804],
+      service: [43.693, 43.059, 62.640, 35.880, 36.973, 51.804],
+      wholesaleRetail: [16.408, 12.236, 14.438, 33.222, 20.665, 20.838]
+    },
+    fteK: [115.543, 119.264, 114.928, 114.584, 102.567, 116.562],
+    hcK: [122.997, 126.871, 122.937, 127.464, 110.827, 121.397],
+    personnelByRoleFteK: {
+      researcher: [86.369, 107.855, 85.480, 93.688, 76.756, 89.025],
+      technician: [24.785, 9.189, 17.641, 12.455, 16.031, 21.586],
+      support: [4.387, 2.220, 11.807, 8.443, 9.780, 5.951]
+    }
+  },
+  // Research type / field of science: % of R&D spend, available for
+  // 2564–2568 only — the 2563 file uses an incompatible sheet layout.
+  researchTypePctByYear: {
+    // 2563: this file's sheet has no row labels at all — order inferred
+    // from the pattern that "พัฒนาทดลอง" is the largest share in every
+    // other year on record (70–87%, no exceptions), which the 86.69%
+    // value here matches; not a confirmed label like other years.
+    "2563": [["พื้นฐาน", 0.83], ["ประยุกต์", 12.48], ["พัฒนาทดลอง", 86.69]],
+    "2564": [["พื้นฐาน", 50.27], ["ประยุกต์", 13.56], ["พัฒนาทดลอง", 36.17]],
+    "2565": [["พื้นฐาน", 14.55], ["ประยุกต์", 12.67], ["พัฒนาทดลอง", 72.78]],
+    "2566": [["พื้นฐาน", 5.42], ["ประยุกต์", 8.92], ["พัฒนาทดลอง", 69.63], ["อื่นๆ", 16.03]],
+    "2567": [["พื้นฐาน", 3.48], ["ประยุกต์", 22.02], ["พัฒนาทดลอง", 74.50]],
+    "2568": [["พื้นฐาน", 3.41], ["ประยุกต์", 22.99], ["พัฒนาทดลอง", 73.60]]
+  },
+  fieldOfSciencePctByYear: {
+    // 2563: same missing-label issue as research type, but weaker evidence
+    // here — the "dominant field" flips between years (natural science in
+    // 2564, engineering in 2565–2568), so this order is guessed from
+    // structural similarity to the closest year (2564) rather than a
+    // pattern that holds across all years. Lower confidence than research type.
+    "2563": [["วิทยาศาสตร์ธรรมชาติ", 81.70], ["วิศวกรรมศาสตร์และเทคโนโลยี", 17.99], ["วิทยาศาสตร์การแพทย์", 0.21], ["เกษตรศาสตร์", 0.10], ["สังคมศาสตร์", 0.00], ["มนุษยศาสตร์", 0.00]],
+    "2564": [["วิทยาศาสตร์ธรรมชาติ", 66.93], ["วิศวกรรมศาสตร์และเทคโนโลยี", 24.59], ["วิทยาศาสตร์การแพทย์", 3.15], ["เกษตรศาสตร์", 3.78], ["สังคมศาสตร์", 0.36], ["มนุษยศาสตร์", 1.19]],
+    "2565": [["วิทยาศาสตร์ธรรมชาติ", 27.83], ["วิศวกรรมศาสตร์และเทคโนโลยี", 46.85], ["วิทยาศาสตร์การแพทย์", 14.06], ["เกษตรศาสตร์", 4.25], ["สังคมศาสตร์", 4.80], ["มนุษยศาสตร์", 2.21]],
+    "2566": [["วิทยาศาสตร์ธรรมชาติ", 24.96], ["วิศวกรรมศาสตร์และเทคโนโลยี", 38.44], ["วิทยาศาสตร์การแพทย์", 6.24], ["เกษตรศาสตร์", 7.28], ["สังคมศาสตร์", 4.48], ["มนุษยศาสตร์", 2.57], ["อื่นๆ", 16.04]],
+    "2567": [["วิทยาศาสตร์ธรรมชาติ", 23.31], ["วิศวกรรมศาสตร์และเทคโนโลยี", 52.01], ["วิทยาศาสตร์การแพทย์", 2.24], ["เกษตรศาสตร์", 12.97], ["สังคมศาสตร์", 5.34], ["มนุษยศาสตร์", 4.13]],
+    "2568": [["วิทยาศาสตร์ธรรมชาติ", 16.48], ["วิศวกรรมศาสตร์และเทคโนโลยี", 57.72], ["วิทยาศาสตร์การแพทย์", 3.43], ["เกษตรศาสตร์", 10.49], ["สังคมศาสตร์", 6.16], ["มนุษยศาสตร์", 5.74]]
+  },
+  // Obstacles / collaboration: % of manufacturing-sector respondents
+  // ranking each factor top priority. Only the manufacturing sector was
+  // published for 2564–2567; 2568 uses a different survey question
+  // (High/Medium/Low avg-score) shown separately below, not mixed in here.
+  obstaclesPctByYear: {
+    "2563": [["ขาดบุคลากรที่มีคุณสมบัติเหมาะสม", 42.53], ["ขาดเงินทุนจากกิจการหรือกลุ่มกิจการ", 39.24], ["ต้นทุนการทำนวัตกรรมสูงเกินไป", 38.71], ["ขาดเงินทุนจากแหล่งภายนอกกิจการ", 33.75], ["ขาดข้อมูลเกี่ยวกับเทคโนโลยี", 31.85], ["ขาดข้อมูลเกี่ยวกับตลาด", 29.30]],
+    "2564": [["ต้นทุนการทำนวัตกรรมสูงเกินไป", 28.36], ["ขาดบุคลากรที่มีคุณสมบัติเหมาะสม", 27.90], ["ขาดเงินทุนจากกิจการหรือกลุ่มกิจการ", 23.61], ["ขาดข้อมูลเกี่ยวกับเทคโนโลยี", 22.38], ["ขาดข้อมูลเกี่ยวกับตลาด", 19.01], ["ขาดเงินทุนจากแหล่งภายนอกกิจการ", 18.82]],
+    "2565": [["ต้นทุนการทำนวัตกรรมสูงเกินไป", 11.92], ["ขาดบุคลากรที่มีคุณสมบัติเหมาะสม", 11.12], ["ขาดเงินทุนจากกิจการหรือกลุ่มกิจการ", 10.86], ["ขาดข้อมูลเกี่ยวกับเทคโนโลยี", 9.38], ["ขาดเงินทุนจากแหล่งภายนอกกิจการ", 9.37], ["ไม่จำเป็น เนื่องจากมีนวัตกรรมก่อนหน้าแล้ว", 8.91]],
+    "2566": [["ความต้องการนวัตกรรมของตลาดไม่แน่นอน", 14.43], ["ต้นทุนการทำนวัตกรรมสูงเกินไป", 9.84], ["ขาดบุคลากรที่มีคุณสมบัติเหมาะสม", 9.34], ["ขาดเงินทุนจากกิจการหรือกลุ่มกิจการ", 8.48], ["ขาดข้อมูลเกี่ยวกับเทคโนโลยี", 8.46], ["ตลาดถูกครอบงำโดยกิจการที่ครองตลาดอยู่ก่อน", 8.26]],
+    "2567": [["ต้นทุนการทำนวัตกรรมสูงเกินไป", 9.12], ["ขาดบุคลากรที่มีคุณสมบัติเหมาะสม", 8.78], ["ไม่จำเป็น เนื่องจากมีนวัตกรรมก่อนหน้าแล้ว", 8.54], ["ขาดเงินทุนจากกิจการหรือกลุ่มกิจการ", 8.49], ["ความต้องการนวัตกรรมของตลาดไม่แน่นอน", 8.40], ["หาพันธมิตรทำนวัตกรรมได้ยาก", 8.30]]
+  },
+  collaborationPctByYear: {
+    "2563": [["ลูกค้า/ผู้ซื้อ", 59.31], ["ซัพพลายเออร์ไทย", 47.32], ["ซัพพลายเออร์ต่างชาติ", 17.18], ["บริษัทแม่/กิจการในเครือ", 15.41], ["กิจการอื่น", 11.13], ["สถาบันวิจัยของรัฐ", 10.37]],
+    "2564": [["ลูกค้า/ผู้ซื้อ", 37.96], ["ซัพพลายเออร์ไทย", 32.31], ["ซัพพลายเออร์ต่างชาติ", 26.81], ["บริษัทแม่/กิจการในเครือ", 26.50], ["คู่แข่ง", 17.45], ["กิจการอื่น", 16.88]],
+    "2565": [["ลูกค้า/ผู้ซื้อ", 22.94], ["ซัพพลายเออร์ไทย", 20.47], ["ซัพพลายเออร์ต่างชาติ", 10.82], ["บริษัทแม่/กิจการในเครือ", 7.26], ["คู่แข่ง", 6.95], ["สถาบันวิจัยของรัฐ", 5.66]],
+    "2566": [["ลูกค้า/ผู้ซื้อ", 32.73], ["ซัพพลายเออร์ไทย", 23.99], ["ซัพพลายเออร์ต่างชาติ", 11.76], ["บริษัทแม่/กิจการในเครือ", 7.58], ["คู่แข่ง", 5.91], ["หน่วยราชการอื่น", 3.89]],
+    "2567": [["ลูกค้า/ผู้ซื้อ", 11.58], ["ซัพพลายเออร์ไทย", 10.84], ["บริษัทแม่/กิจการในเครือ", 9.94], ["ซัพพลายเออร์ต่างชาติ", 9.76], ["หน่วยราชการอื่น", 7.65], ["มหาวิทยาลัย", 7.65]]
   }
 };
 
@@ -1134,7 +1260,7 @@ const NAV_SECTIONS = {
   private: [
     ["p-overview", "ภาพรวม"],
     ["p-trend", "แนวโน้ม (หลายปี)"],
-    ["p-current", "ข้อมูลปี 2567"],
+    ["p-current", "ข้อมูลรายปี"],
     ["p-insight", "ข้อสังเกต"]
   ],
   public: [
@@ -1904,6 +2030,30 @@ button:focus-visible, select:focus-visible, a:focus-visible{
   font-size:12.5px;
   margin:4px 0 0;
 }
+.pbi-year-picker{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:16px;
+}
+.pbi-year-btn{
+  padding:7px 16px;
+  border-radius:20px;
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--text-mid);
+  font-family:var(--font-mono);
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all .12s ease;
+}
+.pbi-year-btn:hover{border-color:var(--pbi-blue);}
+.pbi-year-btn.active{
+  background:var(--pbi-navy);
+  border-color:var(--pbi-navy);
+  color:#fff;
+}
 .pbi-kpi-strip{
   background:var(--card);
   border:1px solid var(--border);
@@ -1977,6 +2127,14 @@ button:focus-visible, select:focus-visible, a:focus-visible{
 }
 .pbi-panel-body--hero{min-height:320px;}
 .pbi-panel-body--compact{min-height:160px;}
+/* Locked-height variant: only for panels that redraw with a different
+   number of bars per year-filter click, which otherwise ratchet taller
+   on every switch. Applied narrowly via extra class, not the base rule
+   above, so unrelated charts (e.g. the R&D Trend line chart) are untouched. */
+.pbi-panel-body--locked{height:200px; max-height:200px; overflow:hidden;}
+.pbi-panel-body--locked.pbi-panel-body--hero{height:320px; max-height:320px;}
+.pbi-panel-body--locked.pbi-panel-body--compact{height:160px; max-height:160px;}
+.pbi-panel-body--locked-tall{height:440px; max-height:440px; overflow:hidden;}
 .pbi-panel--hero .pbi-panel-head{padding:14px 18px; font-size:15px;}
 .pbi-panel--compact .pbi-panel-head{padding:9px 14px; font-size:12px;}
 .pbi-grid-hero{
@@ -1984,6 +2142,7 @@ button:focus-visible, select:focus-visible, a:focus-visible{
   grid-template-columns:1.6fr 1fr;
   gap:18px;
   margin-bottom:18px;
+  align-items:start;
 }
 @media (max-width:900px){
   .pbi-grid-hero{grid-template-columns:1fr;}
@@ -2163,11 +2322,12 @@ export default function App() {
   const privTrendRef = useRef(null);
   const privIndustryRef = useRef(null);
   const privDonutRef = useRef(null);
-  const privObstacleRef = useRef(null);
-  const privCollabRef = useRef(null);
-  const privResearchTypeRef = useRef(null);
-  const privFieldRef = useRef(null);
   const privNationalRef = useRef(null);
+  const privRoleRef = useRef(null);
+  const privResearchTypeYearRef = useRef(null);
+  const privFieldYearRef = useRef(null);
+  const privObstacleYearRef = useRef(null);
+  const privCollabYearRef = useRef(null);
 
   /* ---- public page refs ---- */
   const pubInstRef = useRef(null);
@@ -2239,115 +2399,17 @@ export default function App() {
         pointColors
       });
     }
-    if (privIndustryRef.current) {
-      const ind = PRIVATE_DATA.industryExpenditureBn;
-      const indTotal = ind.reduce((s, d) => s + d.value, 0);
-      drawBarChart(privIndustryRef.current, {
-        labels: ind.map(d => d.label),
-        values: ind.map(d => d.value),
-        colors: ind.map(() => "#3F6FBF"),
-        formatValue: v => fmtNumber(v, 1) + " พันล้านบาท",
-        tooltipHtml: i => {
-          const d = ind[i];
-          return `<div class="tt-year">${d.label}</div>
-            <div class="tt-row">มูลค่า R&D: <b>${fmtNumber(d.value, 2)} พันล้านบาท</b></div>
-            <div class="tt-row">สัดส่วนของ R&D เอกชนรวม: <b>${fmtNumber(d.value / indTotal * 100, 1)}%</b></div>`;
-        }
-      });
-    }
-    if (privDonutRef.current) {
-      const total = PRIVATE_DATA.personnel.reduce((s, x) => s + x.value, 0);
-      const donutPalette = ["#0B2545", "#17406E", "#2B5D93", "#4A7FB5", "#8FB3DA"];
-      const genderByRole = {};
-      PRIVATE_DATA.personnelByGender.forEach(d => { genderByRole[d.role] = d; });
-      drawDonutChart(privDonutRef.current, {
-        segments: PRIVATE_DATA.personnel.map((d, i) => ({ ...d, color: donutPalette[i] })),
-        centerLabel: "บุคลากรวิจัย (FTE) ปี 2567",
-        centerValue: fmtInt(total),
-        formatValue: (v, f, label) => {
-          const g = genderByRole[label];
-          const main = `${fmtInt(v)} คน-ปี (${fmtNumber(f * 100, 1)}%)`;
-          if (!g) return main;
-          const mPct = fmtNumber(g.male / v * 100, 1);
-          const fPct = fmtNumber(g.female / v * 100, 1);
-          return `${main}
-            <div style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:#3F6FBF;margin-top:4px;"><span style="width:10px;height:10px;border-radius:50%;background:#3F6FBF;flex-shrink:0;"></span>ชาย ${fmtInt(g.male)} คน-ปี (${mPct}%)</div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:#D46A9F;margin-top:3px;"><span style="width:10px;height:10px;border-radius:50%;background:#F5A9CB;flex-shrink:0;"></span>หญิง ${fmtInt(g.female)} คน-ปี (${fPct}%)</div>`;
-        }
-      });
-    }
+    // Industry Expenditure chart is now year-selectable and owned by
+    // PrivatePage's own effect (see yearlyFilter state) — not drawn here.
+    // Personnel donut is now year-selectable and owned by PrivatePage's
+    // own effect (only 2568 has degree/gender-level data) — not drawn here.
     // The live Power BI charts scale each panel to its own bar values
     // (obstacles ~0-700, partners ~0-3,500) — matching that means NOT
     // sharing one axis between the two anymore.
-    if (privObstacleRef.current) {
-      const obs = PRIVATE_DATA.obstacles;
-      drawBarChart(privObstacleRef.current, {
-        labels: obs.map(d => d.label),
-        values: obs.map(d => d.high),
-        colors: obs.map(() => "#3F6FBF"),
-        formatValue: v => fmtInt(v),
-        xAxisLabel: "จำนวนบริษัทที่ให้ความสำคัญระดับสูง",
-        yAxisLabel: "อุปสรรค",
-        tooltipHtml: i => {
-          const d = obs[i];
-          const total = d.high + d.medium + d.low;
-          return `<div class="tt-year">${d.label}</div>
-            <div class="tt-row"><span class="tt-swatch" style="background:#c0392b"></span>ให้ความสำคัญมาก (High): <b>${fmtInt(d.high)}</b></div>
-            <div class="tt-row"><span class="tt-swatch" style="background:#e2a33d"></span>ปานกลาง (Medium): <b>${fmtInt(d.medium)}</b></div>
-            <div class="tt-row"><span class="tt-swatch" style="background:#9aa5b1"></span>น้อย (Low): <b>${fmtInt(d.low)}</b></div>
-            <div class="tt-row">รวมผู้ตอบ: <b>${fmtInt(total)}</b></div>
-            <div class="tt-row">คะแนนเฉลี่ย (Avg score): <b>${fmtNumber(d.value, 3)}</b></div>`;
-        }
-      });
-    }
-    if (privCollabRef.current) {
-      const collab = PRIVATE_DATA.collaboration;
-      drawBarChart(privCollabRef.current, {
-        labels: collab.map(d => d.label),
-        values: collab.map(d => d.high),
-        colors: collab.map(() => "#3F6FBF"),
-        formatValue: v => fmtInt(v),
-        xAxisLabel: "จำนวนบริษัทที่ให้ระดับความร่วมมือสูง",
-        yAxisLabel: "พันธมิตร",
-        tooltipHtml: i => {
-          const d = collab[i];
-          const total = d.high + d.medium + d.low;
-          return `<div class="tt-year">${d.label}</div>
-            <div class="tt-row"><span class="tt-swatch" style="background:#c0392b"></span>ให้ความสำคัญมาก (High): <b>${fmtInt(d.high)}</b></div>
-            <div class="tt-row"><span class="tt-swatch" style="background:#e2a33d"></span>ปานกลาง (Medium): <b>${fmtInt(d.medium)}</b></div>
-            <div class="tt-row"><span class="tt-swatch" style="background:#9aa5b1"></span>น้อย (Low): <b>${fmtInt(d.low)}</b></div>
-            <div class="tt-row">รวมผู้ตอบ: <b>${fmtInt(total)}</b></div>
-            <div class="tt-row">คะแนนเฉลี่ย (Avg score): <b>${fmtNumber(d.value, 3)}</b></div>`;
-        }
-      });
-    }
-    if (privResearchTypeRef.current) {
-      const rt = PRIVATE_DATA.researchTypeBn;
-      const rtTotal = rt.reduce((s, d) => s + d.value, 0);
-      const rtPalette = ["#0B2545", "#3F6FBF", "#8FB3DA"];
-      drawDonutChart(privResearchTypeRef.current, {
-        segments: rt.map((d, i) => ({ ...d, color: rtPalette[i] })),
-        centerLabel: "R&D เอกชน ปี 2567",
-        centerValue: fmtNumber(rtTotal, 1) + " พันล้านบาท",
-        formatValue: (v, f) => `${fmtNumber(v, 1)} พันล้านบาท (${fmtNumber(f * 100, 1)}%)`
-      });
-    }
-    if (privFieldRef.current) {
-      const fs = PRIVATE_DATA.fieldOfScienceBn;
-      const fsTotal = fs.reduce((s, d) => s + d.value, 0);
-      drawBarChart(privFieldRef.current, {
-        labels: fs.map(d => d.label),
-        values: fs.map(d => d.value),
-        colors: fs.map(() => "#3F6FBF"),
-        formatValue: v => fmtNumber(v, 1) + " พันล้านบาท",
-        tooltipHtml: i => {
-          const d = fs[i];
-          return `<div class="tt-year">${d.label}</div>
-            <div class="tt-row">มูลค่า R&D: <b>${fmtNumber(d.value, 2)} พันล้านบาท</b></div>
-            <div class="tt-row">สัดส่วนของ R&D เอกชนรวม: <b>${fmtNumber(d.value / fsTotal * 100, 1)}%</b></div>`;
-        }
-      });
-    }
+    // Obstacles, Collaboration, Research Type, and Field of Science are now
+    // drawn by PrivatePage's own year-filter effects (privObstacleYearRef,
+    // privCollabYearRef, privResearchTypeYearRef, privFieldYearRef) — no
+    // longer drawn here as fixed "latest year" charts.
 
     if (privNationalRef.current) {
       const nt = PRIVATE_DATA.nationalTrend;
@@ -2670,7 +2732,7 @@ export default function App() {
                 tableYears={tableYears} notes={indicatorNotes}
               />
             )}
-            {page === "private" && <PrivatePage refs={{ privTrendRef, privIndustryRef, privDonutRef, privObstacleRef, privCollabRef, privResearchTypeRef, privFieldRef, privNationalRef }} notes={privateNotes} />}
+            {page === "private" && <PrivatePage refs={{ privTrendRef, privIndustryRef, privDonutRef, privNationalRef, privRoleRef, privResearchTypeYearRef, privFieldYearRef, privObstacleYearRef, privCollabYearRef }} notes={privateNotes} />}
             {page === "public" && <PublicPage refs={{ pubInstRef, pubFunderRef, pubTypeRef, pubFieldRef, pubThesisUniRef, pubThesisFieldRef, pubThesisDonutRef, pubProjTrendRef, pubThesisTrendRef }} notes={publicNotes} />}
 
             <footer className="page-footer">
@@ -2687,8 +2749,187 @@ export default function App() {
    PRIVATE SECTOR PAGE
    ============================================================ */
 function PrivatePage({ refs, notes }) {
-  const { privTrendRef, privIndustryRef, privDonutRef, privObstacleRef, privCollabRef, privResearchTypeRef, privFieldRef, privNationalRef } = refs;
+  const { privTrendRef, privIndustryRef, privDonutRef, privNationalRef, privRoleRef, privResearchTypeYearRef, privFieldYearRef, privObstacleYearRef, privCollabYearRef } = refs;
   const K = PRIVATE_DATA.kpis;
+  const YF = PRIVATE_DATA.yearlyFilter;
+  const [selYear, setSelYear] = useState(YF.years[YF.years.length - 1]);
+  const yi = YF.years.indexOf(selYear);
+
+  useEffect(() => {
+    if (!privIndustryRef.current) return;
+    const labels = ["Wholesale/Retail", "Service", "Manufacturing"];
+    const values = [YF.industryBn.wholesaleRetail[yi], YF.industryBn.service[yi], YF.industryBn.manufacturing[yi]];
+    const total = values.reduce((s, v) => s + v, 0);
+    const draw = () => drawBarChart(privIndustryRef.current, {
+      labels,
+      values,
+      colors: labels.map(() => "#3F6FBF"),
+      formatValue: v => fmtNumber(v, 1) + " พันล้านบาท",
+      tooltipHtml: i => `<div class="tt-year">${labels[i]}</div>
+        <div class="tt-row">มูลค่า R&D: <b>${fmtNumber(values[i], 2)} พันล้านบาท</b></div>
+        <div class="tt-row">สัดส่วนของ R&D เอกชนปี ${selYear}: <b>${fmtNumber(values[i] / total * 100, 1)}%</b></div>`
+    });
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selYear]);
+
+  useEffect(() => {
+    if (!privRoleRef.current) return;
+    const roleLabels = ["นักวิจัย", "ช่างเทคนิค/ผู้ช่วยนักวิจัย", "ผู้ทำงานสนับสนุน"];
+    const roleValues = [
+      YF.personnelByRoleFteK.researcher[yi],
+      YF.personnelByRoleFteK.technician[yi],
+      YF.personnelByRoleFteK.support[yi]
+    ];
+    const roleTotal = roleValues.reduce((s, v) => s + v, 0);
+    const draw = () => drawBarChart(privRoleRef.current, {
+      labels: roleLabels,
+      values: roleValues,
+      colors: ["#0B2545", "#3F6FBF", "#8FB3DA"],
+      formatValue: v => fmtNumber(v, 1) + "k คน-ปี",
+      tooltipHtml: i => `<div class="tt-year">${roleLabels[i]}</div>
+        <div class="tt-row">FTE: <b>${fmtNumber(roleValues[i], 2)}k คน-ปี</b></div>
+        <div class="tt-row">สัดส่วนปี ${selYear}: <b>${fmtNumber(roleValues[i] / roleTotal * 100, 1)}%</b></div>`
+    });
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selYear]);
+
+
+
+  useEffect(() => {
+    if (!privDonutRef.current) return;
+    const detail = PRIVATE_DATA.personnelDetailByYear[selYear];
+    if (!detail) {
+      privDonutRef.current.innerHTML = `<div class="empty-note">บุคลากรแยกวุฒิ/เพศ มีเฉพาะปี 2564–2568 (ปี 2563 ข้อมูลดิบในไฟล์ต้นทางไม่ครบ บริษัทจำนวนมากไม่ได้กรอกแยกวุฒิ)</div>`;
+      return;
+    }
+    const donutPalette = ["#0B2545", "#17406E", "#2B5D93", "#4A7FB5", "#8FB3DA"];
+    const segments = detail.map((d, i) => ({ label: d.role, value: d.male + d.female, color: donutPalette[i] }));
+    const total = segments.reduce((s, x) => s + x.value, 0);
+    const genderByRole = {};
+    detail.forEach(d => { genderByRole[d.role] = d; });
+    const draw = () => drawDonutChart(privDonutRef.current, {
+      segments,
+      centerLabel: selYear === "2563" ? `บุคลากรวิจัย (FTE) ปี ${selYear} · ประมาณการ*` : `บุคลากรวิจัย (FTE) ปี ${selYear}`,
+      centerValue: fmtInt(total),
+      formatValue: (v, f, label) => {
+        const g = genderByRole[label];
+        const main = `${fmtInt(v)} คน-ปี (${fmtNumber(f * 100, 1)}%)`;
+        if (!g) return main;
+        const mPct = fmtNumber(g.male / v * 100, 1);
+        const fPct = fmtNumber(g.female / v * 100, 1);
+        return `${main}
+          <div style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:#3F6FBF;margin-top:4px;"><span style="width:10px;height:10px;border-radius:50%;background:#3F6FBF;flex-shrink:0;"></span>ชาย ${fmtInt(g.male)} คน-ปี (${mPct}%)</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:#D46A9F;margin-top:3px;"><span style="width:10px;height:10px;border-radius:50%;background:#F5A9CB;flex-shrink:0;"></span>หญิง ${fmtInt(g.female)} คน-ปี (${fPct}%)</div>`;
+      }
+    });
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [selYear]);
+
+  useEffect(() => {
+    if (!privResearchTypeYearRef.current) return;
+    const data = PRIVATE_DATA.researchTypePctByYear[selYear];
+    if (!data) { privResearchTypeYearRef.current.innerHTML = '<div class="empty-note">ปี 2563: ตัวเลขมีอยู่ในไฟล์แต่ไม่มี label กำกับแถว ไม่สามารถยืนยันได้ว่าตัวเลขไหนคือหมวดไหน (มีเฉพาะปี 2564–2568)</div>'; return; }
+    const draw = () => drawBarChart(privResearchTypeYearRef.current, {
+      labels: data.map(d => d[0]), values: data.map(d => d[1]),
+      colors: data.map(() => "#3F6FBF"), formatValue: v => fmtNumber(v, 1) + "%"
+    });
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [selYear]);
+
+  useEffect(() => {
+    if (!privFieldYearRef.current) return;
+    const data = PRIVATE_DATA.fieldOfSciencePctByYear[selYear];
+    if (!data) { privFieldYearRef.current.innerHTML = '<div class="empty-note">ปี 2563: ตัวเลขมีอยู่ในไฟล์แต่ไม่มี label กำกับแถว ไม่สามารถยืนยันได้ว่าตัวเลขไหนคือหมวดไหน (มีเฉพาะปี 2564–2568)</div>'; return; }
+    const sorted = data.slice().sort((a, b) => a[1] - b[1]);
+    const draw = () => drawBarChart(privFieldYearRef.current, {
+      labels: sorted.map(d => d[0]), values: sorted.map(d => d[1]),
+      colors: sorted.map(() => "#3F6FBF"), formatValue: v => fmtNumber(v, 1) + "%"
+    });
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [selYear]);
+
+  useEffect(() => {
+    if (!privObstacleYearRef.current) return;
+    if (selYear === "2568") {
+      const obs = PRIVATE_DATA.obstacles;
+      const sorted = obs.slice().sort((a, b) => a.value - b.value);
+      const draw = () => drawBarChart(privObstacleYearRef.current, {
+        labels: sorted.map(d => d.label), values: sorted.map(d => d.value),
+        colors: sorted.map(() => "#3F6FBF"), formatValue: v => fmtNumber(v, 2) + " (คะแนนเฉลี่ย)",
+        tooltipHtml: i => {
+          const d = sorted[i], total = d.high + d.medium + d.low;
+          return `<div class="tt-year">${d.label}</div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#c0392b"></span>ให้ความสำคัญมาก: <b>${fmtInt(d.high)}</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#e2a33d"></span>ปานกลาง: <b>${fmtInt(d.medium)}</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#9aa5b1"></span>น้อย: <b>${fmtInt(d.low)}</b></div>
+            <div class="tt-row">รวมผู้ตอบ: <b>${fmtInt(total)}</b></div>`;
+        }
+      });
+      draw();
+      window.addEventListener("resize", draw);
+      return () => window.removeEventListener("resize", draw);
+    }
+    const data = PRIVATE_DATA.obstaclesPctByYear[selYear];
+    if (!data) { privObstacleYearRef.current.innerHTML = `<div class="empty-note">ปี ${selYear}: ไม่มีข้อมูลหมวดนี้ในไฟล์ปีนี้</div>`; return; }
+    const sorted = data.slice().sort((a, b) => a[1] - b[1]);
+    const draw = () => drawBarChart(privObstacleYearRef.current, {
+      labels: sorted.map(d => d[0]), values: sorted.map(d => d[1]),
+      colors: sorted.map(() => "#3F6FBF"), formatValue: v => fmtNumber(v, 1) + "%",
+      tooltipHtml: i => `<div class="tt-year">${sorted[i][0]}</div>
+        <div class="tt-row">สัดส่วนผู้ตอบที่จัดอันดับสูงสุด (เฉพาะภาคการผลิต): <b>${fmtNumber(sorted[i][1], 1)}%</b></div>`
+    });
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [selYear]);
+
+  useEffect(() => {
+    if (!privCollabYearRef.current) return;
+    if (selYear === "2568") {
+      const col = PRIVATE_DATA.collaboration;
+      const sorted = col.slice().sort((a, b) => a.value - b.value);
+      const draw = () => drawBarChart(privCollabYearRef.current, {
+        labels: sorted.map(d => d.label), values: sorted.map(d => d.value),
+        colors: sorted.map(() => "#3F6FBF"), formatValue: v => fmtNumber(v, 2) + " (คะแนนเฉลี่ย)",
+        tooltipHtml: i => {
+          const d = sorted[i], total = d.high + d.medium + d.low;
+          return `<div class="tt-year">${d.label}</div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#c0392b"></span>ให้ความสำคัญมาก: <b>${fmtInt(d.high)}</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#e2a33d"></span>ปานกลาง: <b>${fmtInt(d.medium)}</b></div>
+            <div class="tt-row"><span class="tt-swatch" style="background:#9aa5b1"></span>น้อย: <b>${fmtInt(d.low)}</b></div>
+            <div class="tt-row">รวมผู้ตอบ: <b>${fmtInt(total)}</b></div>`;
+        }
+      });
+      draw();
+      window.addEventListener("resize", draw);
+      return () => window.removeEventListener("resize", draw);
+    }
+    const data = PRIVATE_DATA.collaborationPctByYear[selYear];
+    if (!data) { privCollabYearRef.current.innerHTML = `<div class="empty-note">ปี ${selYear}: ไม่มีข้อมูลหมวดนี้ในไฟล์ปีนี้</div>`; return; }
+    const sorted = data.slice().sort((a, b) => a[1] - b[1]);
+    const draw = () => drawBarChart(privCollabYearRef.current, {
+      labels: sorted.map(d => d[0]), values: sorted.map(d => d[1]),
+      colors: sorted.map(() => "#3F6FBF"), formatValue: v => fmtNumber(v, 1) + "%",
+      tooltipHtml: i => `<div class="tt-year">${sorted[i][0]}</div>
+        <div class="tt-row">สัดส่วนผู้ตอบที่จัดอันดับสูงสุด (เฉพาะภาคการผลิต): <b>${fmtNumber(sorted[i][1], 1)}%</b></div>`
+    });
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [selYear]);
+
   const kpiCards = [
     { icon: "🏢", value: fmtInt(K.companiesSurveyed), label: "จำนวนบริษัท" },
     { icon: "🥧", value: fmtPct1(K.pctDoingRD), label: "บริษัทที่ทำ R&D" },
@@ -2698,6 +2939,13 @@ function PrivatePage({ refs, notes }) {
     { icon: "🎯", value: fmtPct1(K.rdGdpTargetAchievementPct), label: "R&D/GDP" },
     { icon: "📊", value: fmtPct1(K.innovationActivePct), label: "สัดส่วนบริษัทที่มี innovation" },
     { icon: "🧮", value: fmtPct1(K.ipActivePct), label: "IP Activity" }
+  ];
+
+  const yearlyKpis = [
+    { icon: "🏢", value: fmtInt(YF.totalEnterprises[yi]), label: "บริษัทที่ตอบแบบสำรวจ" },
+    { icon: "🥧", value: fmtPct1(YF.pctRD[yi]), label: "% ทำ R&D" },
+    { icon: "🗄️", value: fmtBn(YF.rdValueBn[yi]), label: "มูลค่า R&D (พันล้านบาท)" },
+    { icon: "👥", value: fmtNumber(YF.fteK[yi], 1) + "k", label: "บุคลากร FTE" }
   ];
 
   return (
@@ -2745,56 +2993,98 @@ function PrivatePage({ refs, notes }) {
       </section>
 
       <section id="p-current">
-        <h3 className="pbi-section-title">ข้อมูลปี 2567 (ปีล่าสุด)</h3>
-        <div className="pbi-panel pbi-panel--full pbi-panel--hero" style={{ marginBottom: 18 }}>
-          <div className="pbi-panel-head">
-            <span>ภาพรวมบุคลากรด้าน R&amp;D</span>
-            <span className="pbi-panel-head-sub">FTE ปี 2567 · ชี้ที่ชิ้นวงกลม/รายการเพื่อดูสัดส่วนเพศ</span>
-          </div>
-          <div className="pbi-panel-body pbi-panel-body--hero" ref={privDonutRef}></div>
+        <h3 className="pbi-section-title">ข้อมูลรายปี (เลือกปีได้)</h3>
+        <div className="pbi-year-picker">
+          {PRIVATE_DATA.yearlyFilter.years.map(y => (
+            <button key={y} className={`pbi-year-btn${selYear === y ? " active" : ""}`} onClick={() => setSelYear(y)}>{y}</button>
+          ))}
         </div>
 
-        <div className="pbi-grid-hero" style={{ marginBottom: 18 }}>
+        <div className="pbi-kpi-strip" style={{ marginBottom: 8 }}>
+          {yearlyKpis.map((c, i) => (
+            <div className="pbi-kpi-item" key={i}>
+              <span className="pbi-kpi-icon">{c.icon}</span>
+              <div className="pbi-kpi-value">{c.value}</div>
+              <div className="pbi-kpi-label">{c.label}</div>
+            </div>
+          ))}
+        </div>
+        {selYear === "2563" && (
+          <p style={{ margin: "8px 0 18px", fontSize: 11.5, color: "var(--text-dim)" }}>
+            *ปี 2563: ไฟล์นี้ไม่มีคอลัมน์ "ทำ R&D" ในชีตสรุปเหมือนปีอื่น ตัวเลข 2,547 บริษัทนับจากคอลัมน์ "Have R&D" ในข้อมูลดิบรายบริษัทแทน — วิธีต่างจากปีอื่นเล็กน้อยแต่อ้างอิงจากข้อมูลจริง ไม่ใช่ประมาณการ
+          </p>
+        )}
+
+        <div className="pbi-grid-hero" style={{ marginBottom: 18, gridTemplateColumns: "1fr 1fr" }}>
           <div className="pbi-panel pbi-panel--hero">
             <div className="pbi-panel-head">
               <span>R&amp;D Expenditure by Industry</span>
-              <span className="pbi-panel-head-sub">Billion Baht · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+              <span className="pbi-panel-head-sub">ปี {selYear} · Billion Baht · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
             </div>
-            <div className="pbi-panel-body pbi-panel-body--hero" ref={privIndustryRef}></div>
+            <div className="pbi-panel-body pbi-panel-body--hero pbi-panel-body--locked" ref={privIndustryRef}></div>
           </div>
-          <div className="pbi-panel pbi-panel--compact">
+          <div className="pbi-panel pbi-panel--hero">
             <div className="pbi-panel-head">
-              <span>ค่าใช้จ่าย R&amp;D เอกชน ตามประเภทการวิจัย</span>
-              <span className="pbi-panel-head-sub">ชี้เพื่อดูรายละเอียด</span>
+              <span>บุคลากรวิจัยแยกตามบทบาท</span>
+              <span className="pbi-panel-head-sub">ปี {selYear} · FTE (พันคน-ปี)</span>
             </div>
-            <div className="pbi-panel-body pbi-panel-body--compact" ref={privResearchTypeRef}></div>
+            <div className="pbi-panel-body pbi-panel-body--hero pbi-panel-body--locked" ref={privRoleRef}></div>
           </div>
         </div>
 
-        <div className="pbi-panel pbi-panel--full pbi-panel--compact" style={{ marginBottom: 18 }}>
+        <div className="pbi-panel pbi-panel--full pbi-panel--hero" style={{ marginBottom: 18 }}>
           <div className="pbi-panel-head">
-            <span>ค่าใช้จ่าย R&amp;D เอกชน ตามสาขาการวิจัย</span>
-            <span className="pbi-panel-head-sub">ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+            <span>ภาพรวมบุคลากรด้าน R&amp;D แยกวุฒิ/เพศ</span>
+            <span className="pbi-panel-head-sub">ปี {selYear} · ชี้ที่ชิ้นวงกลม/รายการเพื่อดูสัดส่วนเพศ</span>
           </div>
-          <div className="pbi-panel-body pbi-panel-body--compact" ref={privFieldRef}></div>
+          <div className="pbi-panel-body pbi-panel-body--locked-tall" ref={privDonutRef}></div>
+          {selYear === "2563" && (
+            <p className="pbi-panel-note">*ปี 2563 ข้อมูลดิบแยกวุฒิมีแค่ ~40% ของนักวิจัยทั้งหมด ตัวเลขนี้จึงเป็น<b>ค่าประมาณการ</b>จากสัดส่วนของกลุ่มตัวอย่างที่มีข้อมูล ไม่ใช่ค่าที่กระทบยอดแล้วเหมือนปีอื่น</p>
+          )}
         </div>
 
-        <div className="pbi-grid-2x2">
+        <div className="pbi-grid-2x2" style={{ marginBottom: 18 }}>
+          <div className="pbi-panel">
+            <div className="pbi-panel-head">
+              <span>ประเภทการวิจัย</span>
+              <span className="pbi-panel-head-sub">ปี {selYear} · % ของค่าใช้จ่าย R&amp;D{selYear === "2563" ? " · อนุมาน*" : ""}</span>
+            </div>
+            <div className="pbi-panel-body pbi-panel-body--locked" ref={privResearchTypeYearRef}></div>
+            {selYear === "2563" && (
+              <p className="pbi-panel-note">*ไฟล์ปี 2563 ไม่มี label กำกับแถวในชีตต้นทาง อนุมานหมวดจากรูปแบบสัดส่วนของปีอื่นๆ (พัฒนาทดลอง = หมวดใหญ่สุดทุกปี) ไม่ใช่ label ที่ยืนยันแล้ว</p>
+            )}
+          </div>
+          <div className="pbi-panel">
+            <div className="pbi-panel-head">
+              <span>สาขาการวิจัย</span>
+              <span className="pbi-panel-head-sub">ปี {selYear} · % ของค่าใช้จ่าย R&amp;D{selYear === "2563" ? " · อนุมาน*" : ""}</span>
+            </div>
+            <div className="pbi-panel-body pbi-panel-body--locked" ref={privFieldYearRef}></div>
+            {selYear === "2563" && (
+              <p className="pbi-panel-note">*ไฟล์ปี 2563 ไม่มี label กำกับแถวเช่นกัน สาขาที่ "มากที่สุด" ในแต่ละปีสลับกันไปมา (2564=ธรรมชาติ, 2565–2568=วิศวกรรม) จึงอนุมานจากปีที่ใกล้ที่สุด (2564) — ความเชื่อมั่นต่ำกว่าประเภทการวิจัย</p>
+            )}
+          </div>
+        </div>
+
+        <div className="pbi-grid-2x2" style={{ marginBottom: 18 }}>
           <div className="pbi-panel">
             <div className="pbi-panel-head">
               <span>อุปสรรคหลักต่อการทำ R&amp;D และนวัตกรรม</span>
-              <span className="pbi-panel-head-sub">Top 6 · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+              <span className="pbi-panel-head-sub">ปี {selYear} · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
             </div>
-            <div className="pbi-panel-body" ref={privObstacleRef}></div>
+            <div className="pbi-panel-body pbi-panel-body--locked" ref={privObstacleYearRef}></div>
           </div>
           <div className="pbi-panel">
             <div className="pbi-panel-head">
-              <span>Top Collaboration Partners</span>
-              <span className="pbi-panel-head-sub">Top 6 · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
+              <span>พันธมิตรความร่วมมือหลัก</span>
+              <span className="pbi-panel-head-sub">ปี {selYear} · ชี้ที่แท่งเพื่อดูรายละเอียด</span>
             </div>
-            <div className="pbi-panel-body" ref={privCollabRef}></div>
+            <div className="pbi-panel-body pbi-panel-body--locked" ref={privCollabYearRef}></div>
           </div>
         </div>
+        <p style={{ margin: "-10px 0 0", fontSize: 11.5, color: "var(--text-dim)" }}>
+          ปี 2564–2567: อุปสรรค/พันธมิตรเป็นข้อมูลเฉพาะ "ภาคการผลิต" วัดเป็น % ผู้ตอบที่จัดอันดับสูงสุด (ไฟล์ปีเหล่านั้นไม่มีข้อมูลภาพรวมทุกอุตสาหกรรม) · ปี 2568: เป็นข้อมูล "ภาพรวมทุกอุตสาหกรรม" วัดเป็นคะแนนเฉลี่ยจากระดับ High/Medium/Low แทน (คนละแบบสำรวจ ชี้ที่แท่งดูรายละเอียดได้)
+        </p>
       </section>
 
       <section id="p-insight">
@@ -2818,6 +3108,7 @@ function PrivatePage({ refs, notes }) {
 function PublicPage({ refs, notes }) {
   const { pubInstRef, pubFunderRef, pubTypeRef, pubFieldRef, pubThesisUniRef, pubThesisFieldRef, pubThesisDonutRef, pubProjTrendRef, pubThesisTrendRef } = refs;
   const P = PUBLIC_DATA.projects, T = PUBLIC_DATA.thesis;
+  const [showYearNote, setShowYearNote] = useState(false);
 
   const kpiCards = [
     { icon: "📁", value: fmtInt(P.totalProjects), label: "โครงการวิจัยภาครัฐ (ปีงบ 2567)" },
@@ -2851,13 +3142,25 @@ function PublicPage({ refs, notes }) {
 
       <section id="g-trend">
         <h3 className="pbi-section-title">จำนวนโครงการเพิ่มขึ้น แต่งบเบิกจ่ายต่อโครงการลดลง</h3>
-        <p style={{ margin: "-6px 0 8px", fontSize: 12.5, color: "var(--text-mid)" }}>เปรียบเทียบข้อมูลปีงบประมาณ 2566 และ 2567</p>
-        <div className="pbi-insight" style={{ marginBottom: 16 }}>
-          <span className="pbi-insight-icon">ℹ️</span>
-          <span style={{ fontSize: 12, color: "var(--text-mid)" }}>
-            กราฟด้านล่างใช้ <b>คนละระบบปี</b>: โครงการวิจัย/งบประมาณ นับตาม <b>ปีงบประมาณ</b> (ต.ค.–ก.ย.) ส่วนวิทยานิพนธ์นับตาม <b>ปีการศึกษา</b> (มิ.ย.–พ.ค.) ซึ่งเป็นปฏิทินคนละแบบตามระบบราชการ/การศึกษาไทย และแต่ละชุดข้อมูลก็มาจากคนละหน่วยงาน จึงมีปีล่าสุดที่รายงานไม่ตรงกัน (ปีงบ 2567 vs ปีการศึกษา 2566) — ไม่ใช่ความผิดพลาดของข้อมูล
-          </span>
-        </div>
+        <p style={{ margin: "-6px 0 8px", fontSize: 12.5, color: "var(--text-mid)" }}>
+          เปรียบเทียบข้อมูลปีงบประมาณ 2566 และ 2567{" "}
+          <button
+            onClick={() => setShowYearNote(v => !v)}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, color: "var(--pbi-blue)", verticalAlign: "middle" }}
+            aria-label="ทำไมปีไม่ตรงกัน"
+            title="ทำไมปีไม่ตรงกัน"
+          >
+            ⓘ
+          </button>
+        </p>
+        {showYearNote && (
+          <div className="pbi-insight" style={{ marginBottom: 16 }}>
+            <span className="pbi-insight-icon">ℹ️</span>
+            <span style={{ fontSize: 12, color: "var(--text-mid)" }}>
+              กราฟด้านล่างใช้ <b>คนละระบบปี</b>: โครงการวิจัย/งบประมาณ นับตาม <b>ปีงบประมาณ</b> (ต.ค.–ก.ย.) ส่วนวิทยานิพนธ์นับตาม <b>ปีการศึกษา</b> (มิ.ย.–พ.ค.) ซึ่งเป็นปฏิทินคนละแบบตามระบบราชการ/การศึกษาไทย และแต่ละชุดข้อมูลก็มาจากคนละหน่วยงาน จึงมีปีล่าสุดที่รายงานไม่ตรงกัน (ปีงบ 2567 vs ปีการศึกษา 2566) — ไม่ใช่ความผิดพลาดของข้อมูล
+            </span>
+          </div>
+        )}
 
         <div className="pbi-delta-row">
           <div className="pbi-delta-card" style={{ "--accent": "#3F6FBF", "--accent-dim": "#EAF0FB" }}>
