@@ -2675,7 +2675,7 @@ export default function App() {
           <div className="sidebar-foot">
             <div className="foot-label">ที่มาข้อมูล</div>
             <div className="foot-value">
-              {page === "indicators" && <>IMD World Competitiveness<br />Online 1995–2026</>}
+              {page === "indicators" && <>IMD World Competitiveness<br />Online 1995–2024</>}
               {page === "private" && <>ผลสำรวจ R&amp;D ภาคเอกชน<br />ปี 2568 (ข้อมูลปี 2567)</>}
               {page === "public" && <>ฐานข้อมูลโครงการวิจัยภาครัฐ<br />ปีงบประมาณ 2567</>}
             </div>
@@ -2736,7 +2736,7 @@ export default function App() {
             {page === "public" && <PublicPage refs={{ pubInstRef, pubFunderRef, pubTypeRef, pubFieldRef, pubThesisUniRef, pubThesisFieldRef, pubThesisDonutRef, pubProjTrendRef, pubThesisTrendRef }} notes={publicNotes} />}
 
             <footer className="page-footer">
-              <p>ที่มาข้อมูล: {page === "indicators" ? "IMD World Competitiveness Online 1995–2026" : page === "private" ? PRIVATE_DATA.sourceLabel : PUBLIC_DATA.sourceLabel}</p>
+              <p>ที่มาข้อมูล: {page === "indicators" ? "IMD World Competitiveness Online 1995–2024" : page === "private" ? PRIVATE_DATA.sourceLabel : PUBLIC_DATA.sourceLabel}</p>
             </footer>
           </main>
         </div>
