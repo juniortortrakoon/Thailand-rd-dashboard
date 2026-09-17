@@ -2675,7 +2675,7 @@ export default function App() {
           <div className="sidebar-foot">
             <div className="foot-label">ที่มาข้อมูล</div>
             <div className="foot-value">
-              {page === "indicators" && <>IMD World Competitiveness<br />Online 1995–2024</>}
+              {page === "indicators" && <>IMD World Competitiveness<br />Online 1995–2025</>}
               {page === "private" && <>ผลสำรวจ R&amp;D ภาคเอกชน<br />ปี 2568 (ข้อมูลปี 2567)</>}
               {page === "public" && <>ฐานข้อมูลโครงการวิจัยภาครัฐ<br />ปีงบประมาณ 2567</>}
             </div>
@@ -2736,7 +2736,7 @@ export default function App() {
             {page === "public" && <PublicPage refs={{ pubInstRef, pubFunderRef, pubTypeRef, pubFieldRef, pubThesisUniRef, pubThesisFieldRef, pubThesisDonutRef, pubProjTrendRef, pubThesisTrendRef }} notes={publicNotes} />}
 
             <footer className="page-footer">
-              <p>ที่มาข้อมูล: {page === "indicators" ? "IMD World Competitiveness Online 1995–2024" : page === "private" ? PRIVATE_DATA.sourceLabel : PUBLIC_DATA.sourceLabel}</p>
+              <p>ที่มาข้อมูล: {page === "indicators" ? "IMD World Competitiveness Online 1995–2025" : page === "private" ? PRIVATE_DATA.sourceLabel : PUBLIC_DATA.sourceLabel}</p>
             </footer>
           </main>
         </div>
@@ -3314,7 +3314,7 @@ function IndicatorsPage({
         <div className="pbi-header">
           <div>
             <p className="pbi-header-title">National R&amp;D Monitoring Dashboard | ดัชนี 10 ตัว (IMD)</p>
-            <p className="pbi-header-sub">IMD World Competitiveness Yearbook 2569 · เทียบไทยกับกลุ่ม BRICS, Tier สูงกว่า และอาเซียน ปี 1995–2024</p>
+            <p className="pbi-header-sub">IMD World Competitiveness Yearbook 2569 · เทียบไทยกับกลุ่ม BRICS, Tier สูงกว่า และอาเซียน ปี 1995–2025</p>
           </div>
         </div>
 
